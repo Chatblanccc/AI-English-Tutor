@@ -37,6 +37,9 @@ const STYLES = `
   @keyframes sceneActiveGlowLight { 0%,100%{box-shadow:0 4px 28px rgba(254,129,19,.22),0 0 0 2px rgba(254,129,19,.30)} 50%{box-shadow:0 6px 40px rgba(254,129,19,.30),0 0 0 2px rgba(254,129,19,.40)} }
   @keyframes sceneThinkGlowLight { 0%,100%{box-shadow:0 4px 24px rgba(100,130,180,.18),0 0 0 1px rgba(100,130,180,.20)} 50%{box-shadow:0 6px 32px rgba(100,130,180,.24),0 0 0 1px rgba(100,130,180,.28)} }
 
+  .avatar-strip { transition: all .4s cubic-bezier(.4,0,.2,1); }
+  @keyframes stripIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important}}
 `;
 
@@ -712,17 +715,49 @@ export const VoiceInterface = () => {
           </div>
         </header>
 
-        {/* Avatar */}
-        <div className="flex-shrink-0 relative z-10 flex flex-col items-center gap-1 pt-1 pb-1">
-          {/* Status */}
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full border"
-            style={{ background: theme.bgStatusPill, borderColor: 'rgba(254,129,19,.12)' }}>
-            <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor }} />
-            <span className="text-[10px] font-medium" style={{ color: statusColor }}>{statusLabel}</span>
+        {/* Avatar — full when idle, compact strip when chatting */}
+        {messages.length === 0 ? (
+          /* ── Idle: full centred avatar ───────────────────────────────── */
+          <div className="avatar-strip flex-shrink-0 relative z-10 flex flex-col items-center gap-1 pt-2 pb-1">
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full border"
+              style={{ background: theme.bgStatusPill, borderColor: 'rgba(254,129,19,.12)' }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor }} />
+              <span className="text-[10px] font-medium" style={{ color: statusColor }}>{statusLabel}</span>
+            </div>
+            <AvatarScene isListening={isListening} isSpeaking={isSpeaking} isLoading={isLoading} size={110} />
+            <WaveformBars active={isListening || isSpeaking} color={isListening ? 'bg-[#FE8113]' : 'bg-[#FF9E45]'} />
           </div>
-          <AvatarScene isListening={isListening} isSpeaking={isSpeaking} isLoading={isLoading} size={110} />
-          <WaveformBars active={isListening || isSpeaking} color={isListening ? 'bg-[#FE8113]' : 'bg-[#FF9E45]'} />
-        </div>
+        ) : (
+          /* ── Active: compact horizontal strip ───────────────────────── */
+          <div className="avatar-strip flex-shrink-0 relative z-10 flex items-center gap-3 px-4 py-2 border-b"
+            style={{ borderColor: theme.separatorColor, animation: 'stripIn .35s ease-out' }}>
+            {/* Mini avatar card */}
+            <div className="flex-shrink-0 w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center"
+              style={{
+                background: theme.bgAvatarCard,
+                border: `1px solid ${isActive ? 'rgba(254,129,19,.30)' : 'rgba(255,255,255,.07)'}`,
+                boxShadow: isActive ? '0 0 14px rgba(254,129,19,.20)' : 'none',
+                transition: 'box-shadow .4s,border-color .4s',
+              }}>
+              <AvatarScene isListening={isListening} isSpeaking={isSpeaking} isLoading={isLoading} size={36} />
+            </div>
+
+            {/* Name + status */}
+            <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+              <span className="text-xs font-semibold leading-none truncate" style={{ color: theme.textPrimary }}>Alex</span>
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 transition-all duration-300"
+                  style={{ background: statusColor, boxShadow: isActive ? `0 0 5px ${statusColor}` : 'none' }} />
+                <span className="text-[10px] tracking-wide" style={{ color: statusColor }}>{statusLabel}</span>
+              </div>
+            </div>
+
+            {/* Compact waveform */}
+            <div className="flex-shrink-0">
+              <WaveformBars active={isListening || isSpeaking} color={isListening ? 'bg-[#FE8113]' : 'bg-[#FF9E45]'} />
+            </div>
+          </div>
+        )}
 
         {/* Messages */}
         <div ref={mobileMsgRef} className="flex-1 relative z-10 overflow-y-auto px-4 pb-2 space-y-3.5"
