@@ -10,7 +10,7 @@ import { AvatarScene } from '@/components/AvatarScene';
 import { AvatarCharacter } from '@/components/AvatarCharacter';
 import {
   Mic, MicOff, Square, RotateCcw, Volume2, MessageSquare, Sparkles,
-  Send, Keyboard, Sun, Moon, LogOut, Plus, Trash2, Menu, X, ChevronLeft,
+  Send, Keyboard, Sun, Moon, LogOut, Plus, Trash2, Menu, X, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import type { Message, Conversation } from '@/types';
 
@@ -626,7 +626,7 @@ export const VoiceInterface = () => {
 
         {/* ── Conversation sidebar ──────────────────────────────────────────── */}
         <aside
-          className="flex flex-col h-full border-r flex-shrink-0 relative overflow-hidden"
+          className="flex flex-col h-full border-r flex-shrink-0 overflow-hidden"
           style={{
             width: sidebarCollapsed ? 64 : 260,
             minWidth: sidebarCollapsed ? 64 : 260,
@@ -636,13 +636,15 @@ export const VoiceInterface = () => {
             backdropFilter: 'blur(12px)',
           }}>
 
-          {/* Brand header */}
-          <div className="flex items-center gap-3 px-4 pt-5 pb-4 flex-shrink-0"
-            style={{ justifyContent: sidebarCollapsed ? 'center' : undefined }}>
+          {/* ── Brand header ─────────────────────────────────────────────── */}
+          <div className="flex items-center gap-2.5 px-3 pt-4 pb-3 flex-shrink-0">
+            {/* Brand icon — always visible */}
             <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'linear-gradient(135deg,#D96B0B,#FE8113)' }}>
               <Sparkles size={14} className="text-white" />
             </div>
+
+            {/* Brand text + ThemeToggle — only when expanded */}
             {!sidebarCollapsed && (
               <>
                 <div className="flex-1 min-w-0">
@@ -652,46 +654,52 @@ export const VoiceInterface = () => {
                 <ThemeToggle />
               </>
             )}
+
+            {/* Toggle button — always visible, prominent */}
+            <button
+              onClick={() => setSidebarCollapsed(s => !s)}
+              className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all"
+              style={{ color: theme.textMuted, background: 'transparent' }}
+              onMouseEnter={e => {
+                e.currentTarget.style.color = theme.accentText;
+                e.currentTarget.style.background = theme.bgInput;
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.color = theme.textMuted;
+                e.currentTarget.style.background = 'transparent';
+              }}
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+              {sidebarCollapsed
+                ? <PanelLeftOpen size={16} />
+                : <PanelLeftClose size={16} />}
+            </button>
           </div>
 
-          {/* Conversation list */}
-          <div className="flex-1 overflow-hidden flex flex-col min-h-0 pb-2"
-            style={{ padding: sidebarCollapsed ? '0 4px' : '0 4px' }}>
+          {/* ── Conversation list ─────────────────────────────────────────── */}
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0 pb-2 px-1">
             <ConversationList collapsed={sidebarCollapsed} />
           </div>
 
-          {/* User info footer */}
-          <div className="py-3 border-t flex-shrink-0"
+          {/* ── User info footer ─────────────────────────────────────────── */}
+          <div className="border-t flex-shrink-0"
             style={{
               borderColor: theme.bgSidebarBorder,
-              padding: sidebarCollapsed ? '12px 0' : '12px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: sidebarCollapsed ? 'center' : undefined,
-              gap: 8,
+              padding: sidebarCollapsed ? '10px 8px' : '10px 12px',
             }}>
-            {sidebarCollapsed && <ThemeToggle />}
-            <UserMenu collapsed={sidebarCollapsed} />
+            {/* ThemeToggle moves into footer when collapsed */}
+            {sidebarCollapsed
+              ? (
+                <div className="flex flex-col items-center gap-2">
+                  <ThemeToggle />
+                  <UserMenu collapsed />
+                </div>
+              )
+              : (
+                <div className="flex flex-col gap-2">
+                  <UserMenu />
+                </div>
+              )}
           </div>
-
-          {/* ── Collapse / expand toggle ──────────────────────────────────── */}
-          <button
-            onClick={() => setSidebarCollapsed(s => !s)}
-            className="absolute bottom-24 -right-3 z-20 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition-all"
-            style={{
-              background: theme.bgCard,
-              border: `1px solid ${theme.bgSidebarBorder}`,
-              color: theme.textMuted,
-              boxShadow: '0 2px 8px rgba(0,0,0,.18)',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = theme.accentText; e.currentTarget.style.borderColor = 'rgba(254,129,19,.35)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = theme.textMuted; e.currentTarget.style.borderColor = theme.bgSidebarBorder; }}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
-            <ChevronLeft size={12} style={{
-              transform: sidebarCollapsed ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform .3s cubic-bezier(.4,0,.2,1)',
-            }} />
-          </button>
         </aside>
 
         {/* ── Main chat area ────────────────────────────────────────────────── */}
