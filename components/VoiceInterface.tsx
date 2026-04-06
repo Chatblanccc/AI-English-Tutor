@@ -10,7 +10,7 @@ import { AvatarScene } from '@/components/AvatarScene';
 import { AvatarCharacter } from '@/components/AvatarCharacter';
 import {
   Mic, MicOff, Square, RotateCcw, Volume2, MessageSquare, Sparkles,
-  Send, Keyboard, Sun, Moon, LogOut, Plus, Trash2, Menu, X,
+  Send, Keyboard, Sun, Moon, LogOut, Plus, Trash2, Menu, X, ChevronLeft,
 } from 'lucide-react';
 import type { Message, Conversation } from '@/types';
 
@@ -186,7 +186,8 @@ const TextInputBar = ({ onSend, disabled }: { onSend: (text: string) => void; di
 // ─── ConversationList ─────────────────────────────────────────────────────────
 const ConversationList = ({
   onClose,
-}: { onClose?: () => void }) => {
+  collapsed = false,
+}: { onClose?: () => void; collapsed?: boolean }) => {
   const { theme } = useThemeStore();
   const { conversations, currentConversationId, setCurrentConversationId, loadMessages, removeConversation, addConversation, clearMessages } = useChatStore();
   const { data: session } = useSession();
@@ -225,25 +226,52 @@ const ConversationList = ({
   return (
     <div className="flex flex-col h-full">
       {/* New chat button */}
-      <button onClick={handleNewChat}
-        className="mx-3 mb-3 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer"
-        style={{ background: 'linear-gradient(135deg,#FE8113,#D96B0B)', color: '#fff' }}>
-        <Plus size={15} /> New Chat
-      </button>
+      {collapsed ? (
+        <button onClick={handleNewChat} title="New Chat"
+          className="mx-auto mb-3 w-9 h-9 flex items-center justify-center rounded-xl transition-all cursor-pointer flex-shrink-0"
+          style={{ background: 'linear-gradient(135deg,#FE8113,#D96B0B)', color: '#fff' }}>
+          <Plus size={15} />
+        </button>
+      ) : (
+        <button onClick={handleNewChat}
+          className="mx-3 mb-3 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all cursor-pointer"
+          style={{ background: 'linear-gradient(135deg,#FE8113,#D96B0B)', color: '#fff' }}>
+          <Plus size={15} /> <span>New Chat 新聊天</span>
+        </button>
+      )}
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto px-2 space-y-0.5"
-        style={{ scrollbarWidth: 'thin', scrollbarColor: `${theme.scrollbarColor} transparent` }}>
+      <div className="flex-1 overflow-y-auto space-y-0.5"
+        style={{ scrollbarWidth: 'thin', scrollbarColor: `${theme.scrollbarColor} transparent`, padding: collapsed ? '0 8px' : '0 8px' }}>
         {conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 gap-2 opacity-40"
             style={{ color: theme.textMuted }}>
-            <MessageSquare size={24} />
-            <p className="text-xs text-center">No conversations yet.<br />Start chatting!</p>
+            <MessageSquare size={collapsed ? 18 : 24} />
+            {!collapsed && <p className="text-xs text-center">No conversations yet.<br />Start chatting!</p>}
           </div>
         ) : conversations.map(conv => {
           const isActive = conv.id === currentConversationId;
           const isLoading = loadingId === conv.id;
-          return (
+          return collapsed ? (
+            /* ── Collapsed: icon only ── */
+            <div key={conv.id} title={conv.title}
+              onClick={() => handleSelect(conv)}
+              className="relative flex items-center justify-center p-2.5 rounded-xl cursor-pointer transition-all"
+              style={{
+                background: isActive ? `${theme.accentText}18` : 'transparent',
+                border: isActive ? `1px solid ${theme.accentText}30` : '1px solid transparent',
+              }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = theme.bgCard; }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
+              <MessageSquare size={14}
+                style={{ color: isActive ? theme.accentText : theme.textMuted }} />
+              {isActive && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r"
+                  style={{ background: theme.accentText }} />
+              )}
+            </div>
+          ) : (
+            /* ── Expanded: full row ── */
             <div key={conv.id}
               onClick={() => handleSelect(conv)}
               className="group relative px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-start gap-2.5"
@@ -281,10 +309,30 @@ const ConversationList = ({
 };
 
 // ─── UserMenu ─────────────────────────────────────────────────────────────────
-const UserMenu = () => {
+const UserMenu = ({ collapsed = false }: { collapsed?: boolean }) => {
   const { data: session } = useSession();
   const { theme } = useThemeStore();
   if (!session?.user) return null;
+
+  if (collapsed) {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <img src={session.user.image ?? ''} alt={session.user.name ?? ''} referrerPolicy="no-referrer"
+          title={session.user.name ?? ''}
+          className="w-7 h-7 rounded-full object-cover border cursor-pointer"
+          style={{ borderColor: 'rgba(254,129,19,.25)' }}
+          onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        <button onClick={() => signOut({ callbackUrl: '/sign-in' })} title="Sign out"
+          className="p-1.5 rounded-lg transition-all cursor-pointer"
+          style={{ color: theme.textMuted }}
+          onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,.1)'; }}
+          onMouseLeave={e => { e.currentTarget.style.color = theme.textMuted; e.currentTarget.style.background = 'transparent'; }}>
+          <LogOut size={13} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: theme.bgCard }}>
       <img src={session.user.image ?? ''} alt="" referrerPolicy="no-referrer"
@@ -339,6 +387,7 @@ export const VoiceInterface = () => {
   const [inputLang, setInputLang] = useState<'en-US' | 'zh-CN'>('en-US');
   const [showTextInput, setShowTextInput] = useState(false);
   const [showMobileDrawer, setShowMobileDrawer] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const handleSendRef = useRef<(c: string) => void>(() => { });
   const desktopMsgRef = useRef<HTMLDivElement>(null);
@@ -576,31 +625,73 @@ export const VoiceInterface = () => {
       <div className="hidden lg:flex h-screen w-full overflow-hidden" style={{ background: theme.bgMain }}>
 
         {/* ── Conversation sidebar ──────────────────────────────────────────── */}
-        <aside className="w-[260px] xl:w-[280px] flex flex-col h-full border-r flex-shrink-0"
-          style={{ background: theme.bgSidebar, borderColor: theme.bgSidebarBorder, backdropFilter: 'blur(12px)' }}>
+        <aside
+          className="flex flex-col h-full border-r flex-shrink-0 relative overflow-hidden"
+          style={{
+            width: sidebarCollapsed ? 64 : 260,
+            minWidth: sidebarCollapsed ? 64 : 260,
+            transition: 'width .3s cubic-bezier(.4,0,.2,1), min-width .3s cubic-bezier(.4,0,.2,1)',
+            background: theme.bgSidebar,
+            borderColor: theme.bgSidebarBorder,
+            backdropFilter: 'blur(12px)',
+          }}>
 
           {/* Brand header */}
-          <div className="flex items-center gap-3 px-4 pt-5 pb-4">
+          <div className="flex items-center gap-3 px-4 pt-5 pb-4 flex-shrink-0"
+            style={{ justifyContent: sidebarCollapsed ? 'center' : undefined }}>
             <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'linear-gradient(135deg,#D96B0B,#FE8113)' }}>
               <Sparkles size={14} className="text-white" />
             </div>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-sm font-bold tracking-tight leading-none" style={{ color: theme.textPrimary }}>SpeakStar</h1>
-              <p className="text-[9px] font-medium tracking-widest uppercase mt-0.5" style={{ color: theme.accentPale }}>AI English Tutor</p>
-            </div>
-            <ThemeToggle />
+            {!sidebarCollapsed && (
+              <>
+                <div className="flex-1 min-w-0">
+                  <h1 className="text-sm font-bold tracking-tight leading-none" style={{ color: theme.textPrimary }}>SpeakStar</h1>
+                  <p className="text-[9px] font-medium tracking-widest uppercase mt-0.5" style={{ color: theme.accentPale }}>AI English Tutor</p>
+                </div>
+                <ThemeToggle />
+              </>
+            )}
           </div>
 
           {/* Conversation list */}
-          <div className="flex-1 overflow-hidden flex flex-col min-h-0 px-1 pb-2">
-            <ConversationList />
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0 pb-2"
+            style={{ padding: sidebarCollapsed ? '0 4px' : '0 4px' }}>
+            <ConversationList collapsed={sidebarCollapsed} />
           </div>
 
           {/* User info footer */}
-          <div className="px-3 py-3 border-t" style={{ borderColor: theme.bgSidebarBorder }}>
-            <UserMenu />
+          <div className="py-3 border-t flex-shrink-0"
+            style={{
+              borderColor: theme.bgSidebarBorder,
+              padding: sidebarCollapsed ? '12px 0' : '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: sidebarCollapsed ? 'center' : undefined,
+              gap: 8,
+            }}>
+            {sidebarCollapsed && <ThemeToggle />}
+            <UserMenu collapsed={sidebarCollapsed} />
           </div>
+
+          {/* ── Collapse / expand toggle ──────────────────────────────────── */}
+          <button
+            onClick={() => setSidebarCollapsed(s => !s)}
+            className="absolute bottom-24 -right-3 z-20 w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition-all"
+            style={{
+              background: theme.bgCard,
+              border: `1px solid ${theme.bgSidebarBorder}`,
+              color: theme.textMuted,
+              boxShadow: '0 2px 8px rgba(0,0,0,.18)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = theme.accentText; e.currentTarget.style.borderColor = 'rgba(254,129,19,.35)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = theme.textMuted; e.currentTarget.style.borderColor = theme.bgSidebarBorder; }}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+            <ChevronLeft size={12} style={{
+              transform: sidebarCollapsed ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform .3s cubic-bezier(.4,0,.2,1)',
+            }} />
+          </button>
         </aside>
 
         {/* ── Main chat area ────────────────────────────────────────────────── */}
