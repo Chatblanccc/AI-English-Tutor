@@ -271,8 +271,8 @@ const ThemeToggle = () => {
 export const VoiceInterface = () => {
   const {
     messages, appendMessage, isLoading, setLoading, settings, clearMessages,
-    loadMessages, conversations, currentConversationId, setCurrentConversationId,
-    addConversation, touchConversation: touchConvStore,
+    loadMessages, setConversations, conversations, currentConversationId,
+    setCurrentConversationId, addConversation, touchConversation: touchConvStore,
   } = useChatStore();
   const { isListening, transcript, error: speechError, startListening, setTranscript } = useSpeechToText();
   const { speak, stop, unlock, isSpeaking } = useTextToSpeech();
@@ -284,12 +284,13 @@ export const VoiceInterface = () => {
   const [inputLang, setInputLang] = useState<'en-US' | 'zh-CN'>('en-US');
   const [showTextInput, setShowTextInput] = useState(false);
   const [showMobileDrawer, setShowMobileDrawer] = useState(false);
-  const [convsLoaded, setConvsLoaded] = useState(false);
 
   const handleSendRef = useRef<(c: string) => void>(() => { });
   const desktopMsgRef = useRef<HTMLDivElement>(null);
   const mobileMsgRef = useRef<HTMLDivElement>(null);
   const currentConvIdRef = useRef<string | null>(currentConversationId);
+  // Use a ref (not state) so toggling it never causes an extra re-render
+  const convsLoadedRef = useRef(false);
 
   // keep ref in sync so handleSend closure always has the latest id
   useEffect(() => { currentConvIdRef.current = currentConversationId; }, [currentConversationId]);
@@ -300,22 +301,28 @@ export const VoiceInterface = () => {
 
   // ── Load conversations on login ──────────────────────────────────────────────
   useEffect(() => {
-    if (!userId || convsLoaded) return;
-    setConvsLoaded(true);
+    if (!userId || convsLoadedRef.current) return;
+    convsLoadedRef.current = true;
+
     fetch('/api/conversations')
       .then(r => r.json())
       .then(async (list: Conversation[]) => {
         if (!Array.isArray(list) || list.length === 0) return;
-        useChatStore.getState().setConversations(list);
-        // Auto-load most recent conversation
+        // Populate the store with the conversation list
+        setConversations(list);
+        // Auto-load the most recently updated conversation
         const latest = list[0];
         setCurrentConversationId(latest.id);
         const res = await fetch(`/api/conversations/${latest.id}/messages`);
         const msgs: Message[] = await res.json();
-        loadMessages(Array.isArray(msgs) ? msgs : []);
+        loadMessages(Array.isArray(msgs) && msgs.length > 0 ? msgs : []);
       })
-      .catch(console.error);
-  }, [userId, convsLoaded, loadMessages, setCurrentConversationId]);
+      .catch(e => {
+        console.error('Failed to load conversations:', e);
+        convsLoadedRef.current = false; // allow retry on next userId change
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   // ── Auto-scroll ──────────────────────────────────────────────────────────────
   useEffect(() => {

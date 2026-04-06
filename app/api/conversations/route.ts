@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
     const session = await auth() as S;
     const userId = session?.user?.id;
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    await ensureSchema();
     const body: Conversation = await req.json();
     await createConversation(userId, body);
     return NextResponse.json({ ok: true });

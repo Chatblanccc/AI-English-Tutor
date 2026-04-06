@@ -7,8 +7,14 @@ function getDb() {
   return neon(url);
 }
 
+/**
+ * Idempotent schema bootstrap — safe to call on every cold start.
+ * ORDER MATTERS: ALTER TABLE must run before any index that references the new column.
+ */
 export async function ensureSchema() {
   const sql = getDb();
+
+  // ── 1. Conversations table (new) ──────────────────────────────────────────
   await sql`
     CREATE TABLE IF NOT EXISTS conversations (
       id          TEXT NOT NULL,
@@ -19,23 +25,30 @@ export async function ensureSchema() {
       PRIMARY KEY (id, user_id)
     )
   `;
-  await sql`CREATE INDEX IF NOT EXISTS conv_user_idx ON conversations(user_id, updated_at DESC)`;
 
+  // ── 2. Messages table ─────────────────────────────────────────────────────
+  // Use the original single-column PRIMARY KEY so it matches the existing table.
+  // CREATE TABLE IF NOT EXISTS is a no-op when the table already exists.
   await sql`
     CREATE TABLE IF NOT EXISTS messages (
-      id              TEXT NOT NULL,
+      id              TEXT PRIMARY KEY,
       user_id         TEXT NOT NULL,
       conversation_id TEXT,
       role            TEXT NOT NULL,
       content         TEXT NOT NULL,
       timestamp       BIGINT NOT NULL,
-      created_at      TIMESTAMPTZ DEFAULT NOW(),
-      PRIMARY KEY (id, user_id)
+      created_at      TIMESTAMPTZ DEFAULT NOW()
     )
   `;
-  await sql`CREATE INDEX IF NOT EXISTS messages_conv_idx ON messages(conversation_id, user_id, timestamp ASC)`;
-  await sql`CREATE INDEX IF NOT EXISTS messages_user_idx ON messages(user_id, created_at)`;
-  // Migrate old messages that have no conversation_id — leave them as-is (null)
+
+  // ── 3. Migration: add conversation_id to the existing table ───────────────
+  // Must run BEFORE any index that references this column.
+  await sql`ALTER TABLE messages ADD COLUMN IF NOT EXISTS conversation_id TEXT DEFAULT NULL`;
+
+  // ── 4. Indexes (all idempotent) ───────────────────────────────────────────
+  await sql`CREATE INDEX IF NOT EXISTS conv_user_idx       ON conversations(user_id, updated_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS messages_conv_idx   ON messages(conversation_id, user_id, timestamp ASC)`;
+  await sql`CREATE INDEX IF NOT EXISTS messages_user_idx   ON messages(user_id, created_at)`;
 }
 
 // ── Conversation CRUD ─────────────────────────────────────────────────────────
@@ -97,14 +110,17 @@ export async function loadConversationMessages(convId: string, userId: string): 
 
 export async function saveMessageToConversation(convId: string, userId: string, msg: Message): Promise<void> {
   const sql = getDb();
+  // ON CONFLICT (id) — the existing table uses  id TEXT PRIMARY KEY  (single column).
   await sql`
     INSERT INTO messages (id, user_id, conversation_id, role, content, timestamp)
     VALUES (${msg.id}, ${userId}, ${convId}, ${msg.role}, ${msg.content}, ${msg.timestamp})
-    ON CONFLICT (id, user_id) DO UPDATE SET content = EXCLUDED.content
+    ON CONFLICT (id) DO UPDATE
+      SET content         = EXCLUDED.content,
+          conversation_id = EXCLUDED.conversation_id
   `;
 }
 
-// ── Legacy flat message API (kept for /api/messages backward compat) ──────────
+// ── Legacy flat-message helpers (kept for /api/messages backward compat) ──────
 
 export async function loadMessages(userId: string): Promise<Message[]> {
   const sql = getDb();
@@ -124,10 +140,11 @@ export async function loadMessages(userId: string): Promise<Message[]> {
 
 export async function saveMessage(userId: string, msg: Message): Promise<void> {
   const sql = getDb();
+  // ON CONFLICT (id) — matches the real PRIMARY KEY of the existing table.
   await sql`
     INSERT INTO messages (id, user_id, role, content, timestamp)
     VALUES (${msg.id}, ${userId}, ${msg.role}, ${msg.content}, ${msg.timestamp})
-    ON CONFLICT (id, user_id) DO NOTHING
+    ON CONFLICT (id) DO NOTHING
   `;
 }
 
