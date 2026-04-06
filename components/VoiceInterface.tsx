@@ -388,6 +388,7 @@ export const VoiceInterface = () => {
   const [showTextInput, setShowTextInput] = useState(false);
   const [showMobileDrawer, setShowMobileDrawer] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [brandIconHovered, setBrandIconHovered] = useState(false);
 
   const handleSendRef = useRef<(c: string) => void>(() => { });
   const desktopMsgRef = useRef<HTMLDivElement>(null);
@@ -628,8 +629,8 @@ export const VoiceInterface = () => {
         <aside
           className="flex flex-col h-full border-r flex-shrink-0 overflow-hidden"
           style={{
-            width: sidebarCollapsed ? 64 : 260,
-            minWidth: sidebarCollapsed ? 64 : 260,
+            width: sidebarCollapsed ? 60 : 260,
+            minWidth: sidebarCollapsed ? 60 : 260,
             transition: 'width .3s cubic-bezier(.4,0,.2,1), min-width .3s cubic-bezier(.4,0,.2,1)',
             background: theme.bgSidebar,
             borderColor: theme.bgSidebarBorder,
@@ -638,41 +639,48 @@ export const VoiceInterface = () => {
 
           {/* ── Brand header ─────────────────────────────────────────────── */}
           <div className="flex items-center gap-2.5 px-3 pt-4 pb-3 flex-shrink-0">
-            {/* Brand icon — always visible */}
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg,#D96B0B,#FE8113)' }}>
-              <Sparkles size={14} className="text-white" />
-            </div>
 
-            {/* Brand text + ThemeToggle — only when expanded */}
-            {!sidebarCollapsed && (
+            {sidebarCollapsed ? (
+              /* ── Collapsed: brand icon morphs into toggle on hover ─────── */
+              <button
+                onClick={() => setSidebarCollapsed(false)}
+                onMouseEnter={() => setBrandIconHovered(true)}
+                onMouseLeave={() => setBrandIconHovered(false)}
+                title="Expand sidebar"
+                className="w-8 h-8 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 mx-auto"
+                style={{
+                  background: brandIconHovered
+                    ? theme.bgInput
+                    : 'linear-gradient(135deg,#D96B0B,#FE8113)',
+                  border: brandIconHovered ? `1px solid rgba(254,129,19,.35)` : '1px solid transparent',
+                }}>
+                {brandIconHovered
+                  ? <PanelLeftOpen size={16} style={{ color: theme.accentText }} />
+                  : <Sparkles size={14} className="text-white" />}
+              </button>
+            ) : (
+              /* ── Expanded: brand icon + text + theme + close toggle ────── */
               <>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'linear-gradient(135deg,#D96B0B,#FE8113)' }}>
+                  <Sparkles size={14} className="text-white" />
+                </div>
                 <div className="flex-1 min-w-0">
                   <h1 className="text-sm font-bold tracking-tight leading-none" style={{ color: theme.textPrimary }}>SpeakStar</h1>
                   <p className="text-[9px] font-medium tracking-widest uppercase mt-0.5" style={{ color: theme.accentPale }}>AI English Tutor</p>
                 </div>
                 <ThemeToggle />
+                <button
+                  onClick={() => setSidebarCollapsed(true)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all"
+                  style={{ color: theme.textMuted, background: 'transparent' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = theme.accentText; e.currentTarget.style.background = theme.bgInput; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = theme.textMuted; e.currentTarget.style.background = 'transparent'; }}
+                  title="Collapse sidebar">
+                  <PanelLeftClose size={16} />
+                </button>
               </>
             )}
-
-            {/* Toggle button — always visible, prominent */}
-            <button
-              onClick={() => setSidebarCollapsed(s => !s)}
-              className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 cursor-pointer transition-all"
-              style={{ color: theme.textMuted, background: 'transparent' }}
-              onMouseEnter={e => {
-                e.currentTarget.style.color = theme.accentText;
-                e.currentTarget.style.background = theme.bgInput;
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.color = theme.textMuted;
-                e.currentTarget.style.background = 'transparent';
-              }}
-              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
-              {sidebarCollapsed
-                ? <PanelLeftOpen size={16} />
-                : <PanelLeftClose size={16} />}
-            </button>
           </div>
 
           {/* ── Conversation list ─────────────────────────────────────────── */}
