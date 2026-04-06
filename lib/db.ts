@@ -161,6 +161,41 @@ export async function saveMessageToConversation(convId: string, userId: string, 
   `;
 }
 
+// ── User ID migration ─────────────────────────────────────────────────────────
+
+/**
+ * Migrate all conversations & messages from oldId → newId.
+ * Used when switching from random-UUID user IDs to stable provider IDs.
+ */
+export async function migrateUserId(oldId: string, newId: string): Promise<number> {
+  if (oldId === newId) return 0;
+  const sql = getDb();
+  const [c1] = await sql`UPDATE conversations SET user_id = ${newId} WHERE user_id = ${oldId} RETURNING id`;
+  const [m1] = await sql`UPDATE messages SET user_id = ${newId} WHERE user_id = ${oldId} RETURNING id`;
+  const count = (c1 ? 1 : 0) + (m1 ? 1 : 0);
+  if (count > 0) console.log(`[db] migrated user ${oldId.slice(0, 8)}… → ${newId.slice(0, 12)}…`);
+  return count;
+}
+
+/**
+ * Migrate ALL UUID-format user_ids to a stable provider ID.
+ * Intended as a one-time migration for early adopters.
+ */
+export async function migrateAllUuidUsers(stableId: string): Promise<void> {
+  const sql = getDb();
+  const r1 = await sql`
+    UPDATE conversations SET user_id = ${stableId}
+    WHERE user_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      AND user_id != ${stableId}
+  `;
+  const r2 = await sql`
+    UPDATE messages SET user_id = ${stableId}
+    WHERE user_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      AND user_id != ${stableId}
+  `;
+  console.log('[db] migrateAllUuidUsers →', stableId.slice(0, 12), '| convs:', r1.length, '| msgs:', r2.length);
+}
+
 // ── Legacy flat-message helpers (kept for /api/messages backward compat) ──────
 
 export async function loadMessages(userId: string): Promise<Message[]> {

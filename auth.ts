@@ -77,14 +77,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: '/sign-in',
   },
   callbacks: {
-    jwt({ token, user }) {
-      // user is only present on the first sign-in; persist the ID into the JWT
-      if (user?.id) token.userId = user.id;
+    async jwt({ token, account }) {
+      // Use the provider's stable ID (e.g. Google "sub" claim) instead of the
+      // auto-generated UUID that changes on every sign-in.
+      if (account?.providerAccountId) {
+        token.userId = account.providerAccountId;
+        token.sub = account.providerAccountId;
+        console.log('[auth] stable userId set:', account.providerAccountId);
+      }
       return token;
     },
     session({ session, token }) {
       if (session.user) {
-        // token.userId is set on first login; token.sub is always present as fallback
         const id = (token.userId ?? token.sub) as string | undefined;
         if (id) (session.user as typeof session.user & { id: string }).id = id;
       }
