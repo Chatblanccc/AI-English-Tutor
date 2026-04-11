@@ -34,6 +34,10 @@ const securityHeaders: { key: string; value: string }[] = [
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  /** Browsers request /favicon.ico by default; point to our SVG so the tab icon is not missing or stale. */
+  async redirects() {
+    return [{ source: "/favicon.ico", destination: "/favicon.svg", permanent: false }];
+  },
   images: {
     remotePatterns: [
       {
