@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { stripe } from '@/lib/stripe';
+import { getStripe } from '@/lib/stripe';
 import { getStripeCustomerId } from '@/lib/db';
 import { PAID_PLANS_LIVE } from '@/lib/product-flags';
 
@@ -32,6 +32,7 @@ export async function POST() {
 
   const appUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? 'http://localhost:3000';
 
+  const stripe = getStripe();
   const portalSession = await stripe.billingPortal.sessions.create({
     customer: stripeCustomerId,
     return_url: `${appUrl}/chat`,

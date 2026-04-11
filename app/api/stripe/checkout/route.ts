@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { stripe } from '@/lib/stripe';
+import { getStripe } from '@/lib/stripe';
 import {
   ensureSchema,
   getStripeCustomerId,
@@ -60,6 +60,7 @@ export async function POST(req: Request) {
   let stripeCustomerId = await getStripeCustomerId(userId);
 
   if (!stripeCustomerId) {
+    const stripe = getStripe();
     const customer = await stripe.customers.create({
       email: session?.user?.email ?? undefined,
       name: session?.user?.name ?? undefined,
@@ -78,6 +79,7 @@ export async function POST(req: Request) {
   // https://docs.stripe.com/payments/alipay — enable Alipay in Dashboard for other flows; recurring Alipay may require Stripe approval.
 
   try {
+    const stripe = getStripe();
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: stripeCustomerId,

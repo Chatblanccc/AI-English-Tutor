@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
-import { stripe, planFromPriceId } from '@/lib/stripe';
+import { getStripe, planFromPriceId } from '@/lib/stripe';
 import {
   ensureSchema,
   upsertUserPlan,
@@ -92,6 +92,8 @@ export async function POST(req: Request) {
     console.error('[webhook] STRIPE_WEBHOOK_SECRET is not set');
     return NextResponse.json({ error: 'Webhook secret not configured' }, { status: 500 });
   }
+
+  const stripe = getStripe();
 
   let event: Stripe.Event;
   try {
