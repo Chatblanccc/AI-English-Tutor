@@ -9,7 +9,7 @@ const siteUrl =
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "AURAE VOICE — AI English Tutor",
+  title: "AURAE VOICE",
   description: "Your personal AI-powered English speaking coach, powered by AURAE VOICE",
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml", sizes: "any" }],
