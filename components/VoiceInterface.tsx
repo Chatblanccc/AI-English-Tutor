@@ -201,36 +201,30 @@ function stripToolCallArtifacts(text: string): {
   };
 }
 
-type ToolPartLike = {
-  type: string;
-  state?: string;
-  input?: { word?: string; partOfSpeech?: string };
-  output?: {
-    original?: string;
-    corrected?: string;
-    explanation?: string;
-    type?: string;
-    prompt?: string;
-    hint?: string;
-    word?: string;
-    partOfSpeech?: string;
-  };
-};
+type ToolPartLike = Extract<UIMessage['parts'][number], { type: `tool-${string}` }>;
 
 function getToolFallbackLine(toolParts: ToolPartLike[]): string {
+  const readField = (value: unknown, key: string): string | undefined => {
+    if (!value || typeof value !== 'object') return undefined;
+    const v = (value as Record<string, unknown>)[key];
+    return typeof v === 'string' ? v : undefined;
+  };
+
   for (const p of toolParts) {
     if (p.state !== 'output-available' || !p.output) continue;
-    if (p.type === 'tool-issueChallenge' && p.output.prompt) {
-      return `Quick challenge: ${p.output.prompt}`;
+    const prompt = readField(p.output, 'prompt');
+    if (p.type === 'tool-issueChallenge' && prompt) {
+      return `Quick challenge: ${prompt}`;
     }
   }
   for (const p of toolParts) {
     if (p.state !== 'output-available' || !p.output) continue;
-    if (p.type === 'tool-correctGrammar' && p.output.corrected) {
-      return `A more natural way to say it is: ${p.output.corrected}`;
+    const corrected = readField(p.output, 'corrected');
+    if (p.type === 'tool-correctGrammar' && corrected) {
+      return `A more natural way to say it is: ${corrected}`;
     }
     if (p.type === 'tool-explainVocabulary') {
-      const word = p.input?.word ?? p.output.word;
+      const word = readField(p.input, 'word') ?? readField(p.output, 'word');
       if (word) return `Nice word to know: ${word}.`;
     }
   }
