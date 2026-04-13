@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import type { Provider } from 'next-auth/providers';
+import { ensureSchema, upsertUserPlan } from '@/lib/db';
 
 // ─── WeChat provider (custom) ─────────────────────────────────────────────────
 // Activated only when WECHAT_CLIENT_ID and WECHAT_CLIENT_SECRET are set.
@@ -91,6 +92,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: '/sign-in',
   },
   callbacks: {
+    async signIn({ account }) {
+      const userId = account?.providerAccountId;
+      if (!userId) return true;
+
+      try {
+        await ensureSchema();
+        await upsertUserPlan({ userId, plan: 'free' });
+      } catch (e) {
+        console.error('[auth] initialize free plan on sign-in:', String(e));
+      }
+
+      return true;
+    },
     /** Same-origin only — blocks open redirects from crafted callbackUrl values. */
     async redirect({ url, baseUrl }) {
       try {

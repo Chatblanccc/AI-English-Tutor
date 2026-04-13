@@ -297,7 +297,15 @@ export async function getUserPlan(userId: string): Promise<UserPlan> {
       WHERE user_id = ${userId}
       LIMIT 1
     `;
-    if (rows.length === 0 || !rows[0].plan) return 'free';
+    if (rows.length === 0 || !rows[0].plan) {
+      // Ensure every signed-in user has a row in Neon, including free users.
+      await sql`
+        INSERT INTO user_plans (user_id, plan)
+        VALUES (${userId}, 'free')
+        ON CONFLICT (user_id) DO NOTHING
+      `;
+      return 'free';
+    }
 
     const raw = rows[0].plan as string;
     if (raw !== 'plus' && raw !== 'pro' && raw !== 'free') return 'free';
