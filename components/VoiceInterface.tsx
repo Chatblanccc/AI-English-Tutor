@@ -23,6 +23,13 @@ import { PAID_PLANS_LIVE } from '@/lib/product-flags';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, UIMessage, generateId } from 'ai';
 
+type ScenarioOption = {
+  scenarioId: string;
+  titleEn: string;
+  titleZh: string;
+  objective: string;
+};
+
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 const STYLES = `
   @keyframes waveBar { from{transform:scaleY(0.3)} to{transform:scaleY(1)} }
@@ -96,6 +103,71 @@ function extractText(msg: UIMessage): string {
     return cleanedText;
   }
   return getToolFallbackLine(toolParts) || getInlineFallbackLine(parsed);
+}
+
+const ENABLE_SEGMENTED_TTS = process.env.NEXT_PUBLIC_TTS_SEGMENTED !== '0';
+const SENTENCE_END_RE = /[.!?。！？\n]/;
+const TRAILING_QUOTE_RE = /^[\s"'”’)\]}]+/;
+const COMMON_ABBREVIATIONS = new Set([
+  'mr.', 'mrs.', 'ms.', 'dr.', 'prof.', 'sr.', 'jr.', 'st.',
+  'vs.', 'etc.', 'e.g.', 'i.e.', 'u.s.', 'u.k.', 'p.m.', 'a.m.',
+]);
+
+function shouldSkipSentenceBoundary(text: string, index: number): boolean {
+  const ch = text[index];
+  const prev = index > 0 ? text[index - 1] : '';
+  const next = index + 1 < text.length ? text[index + 1] : '';
+
+  // Decimal number like 3.14
+  if (ch === '.' && /\d/.test(prev) && /\d/.test(next)) return true;
+
+  // Dotted abbreviations or initials: U.S., A., e.g.
+  if (ch === '.') {
+    const left = text.slice(Math.max(0, index - 7), index + 1).toLowerCase();
+    for (const abbr of COMMON_ABBREVIATIONS) {
+      if (left.endsWith(abbr)) return true;
+    }
+    if (/[A-Za-z]\.$/.test(left) && /[A-Za-z]/.test(next)) return true;
+  }
+
+  return false;
+}
+
+function sliceSpeakableSegments(
+  text: string,
+  options?: { isFinal?: boolean; minLen?: number; maxLen?: number },
+): { segments: string[]; rest: string } {
+  const minLen = options?.minLen ?? 22;
+  const maxLen = options?.maxLen ?? 160;
+  const isFinal = options?.isFinal ?? false;
+  const segments: string[] = [];
+  let lastCut = 0;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    const currentLen = i + 1 - lastCut;
+    const atBoundary = SENTENCE_END_RE.test(ch) || (currentLen >= maxLen && /[,;:，；：]/.test(ch));
+    if (!atBoundary) continue;
+    if (SENTENCE_END_RE.test(ch) && shouldSkipSentenceBoundary(text, i)) continue;
+    if (currentLen < minLen) continue;
+    let end = i + 1;
+    const tail = text.slice(end).match(TRAILING_QUOTE_RE);
+    if (tail?.[0]) end += tail[0].length;
+    const piece = text.slice(lastCut, end).trim();
+    if (piece) segments.push(piece);
+    lastCut = end;
+  }
+
+  let rest = text.slice(lastCut);
+  if (isFinal) {
+    const tail = rest.trim();
+    if (tail.length >= 8) {
+      segments.push(tail);
+      rest = '';
+    }
+  }
+
+  return { segments, rest };
 }
 
 function parseCorrectionPayload(text: string): { original?: string; corrected?: string; explanation?: string } | null {
@@ -840,7 +912,7 @@ export const VoiceInterface = () => {
     removeConversation,
   } = useChatStore();
   const { isListening, transcript, error: speechError, startListening, setTranscript } = useSpeechToText();
-  const { speak, stop, unlock, isSpeaking } = useTextToSpeech();
+  const { speak, stop, unlock, isSpeaking, beginUtterance, enqueueSegment, endUtterance } = useTextToSpeech();
   const { theme, toggleTheme, mode } = useThemeStore();
   const { data: session } = useSession();
   const userId = getUserId(session);
@@ -860,26 +932,17 @@ export const VoiceInterface = () => {
   const [showCheckoutSuccess, setShowCheckoutSuccess] = useState(false);
   const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
   const [showAssessment, setShowAssessment] = useState(false);
+  const [showScenarioPicker, setShowScenarioPicker] = useState(false);
   const [assessmentSubmitting, setAssessmentSubmitting] = useState(false);
   const [hasAssessment, setHasAssessment] = useState(false);
-  const [scenarios, setScenarios] = useState<Array<{
-    scenarioId: string;
-    titleEn: string;
-    titleZh: string;
-    objective: string;
-  }>>([]);
-  const [recommendedScenarios, setRecommendedScenarios] = useState<Array<{
-    scenarioId: string;
-    titleEn: string;
-    titleZh: string;
-    objective: string;
-  }>>([]);
+  const [scenarios, setScenarios] = useState<ScenarioOption[]>([]);
+  const [recommendedScenarios, setRecommendedScenarios] = useState<ScenarioOption[]>([]);
   const [todayPlan, setTodayPlan] = useState<null | {
     goal: string;
     mainScenarioId: string;
     focusCorrections: string[];
     suggestedDurationMin: number;
-    mainScenario?: { titleEn: string; titleZh: string; objective: string } | null;
+    mainScenario?: Omit<ScenarioOption, 'scenarioId'> | null;
   }>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
   const [scenarioLaunchingId, setScenarioLaunchingId] = useState<string | null>(null);
@@ -958,6 +1021,51 @@ export const VoiceInterface = () => {
   } = useChat({ transport });
 
   const isLoading = status === 'streaming' || status === 'submitted';
+  const ttsBufferRef = useRef('');
+  const ttsSpokenTextRef = useRef('');
+  const ttsUtteranceIdRef = useRef<string | null>(null);
+  const ttsSegmentIndexRef = useRef(0);
+  const ttsTelemetryRef = useRef<{
+    firstTokenAt: number | null;
+    firstSegmentQueuedAt: number | null;
+  }>({ firstTokenAt: null, firstSegmentQueuedAt: null });
+
+  const resetSegmentedTtsState = useCallback(() => {
+    const prevUtteranceId = ttsUtteranceIdRef.current;
+    if (prevUtteranceId) endUtterance(prevUtteranceId);
+    ttsBufferRef.current = '';
+    ttsSpokenTextRef.current = '';
+    ttsUtteranceIdRef.current = null;
+    ttsSegmentIndexRef.current = 0;
+    ttsTelemetryRef.current = { firstTokenAt: null, firstSegmentQueuedAt: null };
+  }, [endUtterance]);
+
+  const flushSegmentedTtsBuffer = useCallback((isFinal: boolean) => {
+    const utteranceId = ttsUtteranceIdRef.current;
+    if (!utteranceId) return;
+    const { segments, rest } = sliceSpeakableSegments(ttsBufferRef.current, { isFinal });
+    ttsBufferRef.current = rest;
+
+    for (const segment of segments) {
+      const segmentId = `${utteranceId}-${ttsSegmentIndexRef.current}`;
+      ttsSegmentIndexRef.current += 1;
+      if (ttsTelemetryRef.current.firstSegmentQueuedAt === null) {
+        ttsTelemetryRef.current.firstSegmentQueuedAt = performance.now();
+        if (ttsTelemetryRef.current.firstTokenAt !== null) {
+          console.info(
+            '[tts-metric] firstSegmentQueueDelayMs',
+            Math.round(ttsTelemetryRef.current.firstSegmentQueuedAt - ttsTelemetryRef.current.firstTokenAt),
+          );
+        }
+      }
+      enqueueSegment({
+        utteranceId,
+        segmentId,
+        text: segment,
+        voiceId: activeVoiceId,
+      });
+    }
+  }, [activeVoiceId, enqueueSegment]);
 
   // ── Fetch usage from /api/usage ────────────────────────────────────────────
   const fetchUsage = useCallback(async () => {
@@ -980,22 +1088,80 @@ export const VoiceInterface = () => {
     if (mobileMsgRef.current) mobileMsgRef.current.scrollTop = mobileMsgRef.current.scrollHeight;
   }, [chatMessages]);
 
-  // ── Auto-speak when streaming finishes ────────────────────────────────────
+  // ── Auto-speak (segmented streaming + fallback full-speak) ───────────────
   const prevStatus = useRef(status);
   useEffect(() => {
-    if (prevStatus.current !== 'ready' && status === 'ready') {
-      const last = chatMessages[chatMessages.length - 1];
+    const last = chatMessages[chatMessages.length - 1];
+    const canSegment = ENABLE_SEGMENTED_TTS && !!activeVoiceId;
+
+    if (canSegment && last?.role === 'assistant') {
+      const fullText = extractText(last).trim();
+      if (status === 'streaming') {
+        if (!ttsUtteranceIdRef.current) {
+          ttsUtteranceIdRef.current = `${Date.now()}-${generateId()}`;
+          beginUtterance(ttsUtteranceIdRef.current);
+          ttsTelemetryRef.current = { firstTokenAt: performance.now(), firstSegmentQueuedAt: null };
+        }
+
+        if (!fullText.startsWith(ttsSpokenTextRef.current)) {
+          // Restart segmentation safely if model rewrites earlier partial tokens.
+          ttsBufferRef.current = fullText;
+        } else {
+          ttsBufferRef.current += fullText.slice(ttsSpokenTextRef.current.length);
+        }
+        ttsSpokenTextRef.current = fullText;
+        flushSegmentedTtsBuffer(false);
+      }
+
+      if (prevStatus.current !== 'ready' && status === 'ready') {
+        flushSegmentedTtsBuffer(true);
+        if (ttsTelemetryRef.current.firstTokenAt !== null) {
+          console.info(
+            '[tts-metric] streamToReadyMs',
+            Math.round(performance.now() - ttsTelemetryRef.current.firstTokenAt),
+          );
+        }
+        resetSegmentedTtsState();
+      }
+    } else if (prevStatus.current !== 'ready' && status === 'ready') {
       if (last?.role === 'assistant') {
         const text = extractText(last);
         if (text.trim()) speak(text, activeVoiceId);
       }
+      resetSegmentedTtsState();
+    }
+
+    if (prevStatus.current === 'streaming' && status !== 'streaming' && status !== 'ready') {
+      resetSegmentedTtsState();
+    }
+
+    if (!last || last.role !== 'assistant') {
+      ttsSpokenTextRef.current = '';
+      ttsBufferRef.current = '';
+      if (status !== 'streaming') {
+        resetSegmentedTtsState();
+      }
+    }
+
+    if (prevStatus.current !== 'ready' && status === 'ready') {
       // Update conversation sort order in UI
       if (currentConvIdRef.current) touchConvStore(currentConvIdRef.current);
       // Refresh usage counter after each completed round
       fetchUsage();
     }
     prevStatus.current = status;
-  }, [status, chatMessages, speak, activeVoiceId, touchConvStore, fetchUsage]);
+  }, [
+    status,
+    chatMessages,
+    speak,
+    activeVoiceId,
+    touchConvStore,
+    fetchUsage,
+    beginUtterance,
+    enqueueSegment,
+    flushSegmentedTtsBuffer,
+    resetSegmentedTtsState,
+  ]);
 
   // ── Handle chatError — detect 429 limit_reached ───────────────────────────
   useEffect(() => {
@@ -1008,44 +1174,8 @@ export const VoiceInterface = () => {
     }
   }, [chatError, fetchUsage]);
 
-  // ── Voice → send ──────────────────────────────────────────────────────────
+  // ── Voice → send (handleSend defined after activeHomeScenario — see below) ─
   const handleSendRef = useRef<(c: string) => void>(() => {});
-
-  const handleSend = useCallback((content: string) => {
-    if (!content.trim()) return;
-
-    // Client-side pre-check: block if quota is already exhausted
-    if (usage && usage.window !== 'unlimited' && usage.used >= usage.limit) {
-      setLimitReached(true);
-      return;
-    }
-
-    let convId = currentConvIdRef.current;
-    let convTitle = '';
-
-    if (!convId) {
-      convId = generateId();
-      convTitle = content.length > 45 ? content.slice(0, 45) + '…' : content;
-      const newConv: Conversation = { id: convId, title: convTitle, created_at: Date.now(), updated_at: Date.now() };
-      addConversation(newConv);
-      setCurrentConversationId(convId);
-      currentConvIdRef.current = convId;
-      currentConvTitleRef.current = convTitle;
-    } else {
-      const existing = conversations.find(c => c.id === convId);
-      currentConvTitleRef.current = existing?.title ?? '';
-    }
-
-    setTranscript('');
-    stop();
-    sendMessage({ text: content });
-  }, [addConversation, conversations, sendMessage, setCurrentConversationId, setTranscript, stop, usage]);
-
-  useEffect(() => { handleSendRef.current = handleSend; }, [handleSend]);
-
-  useEffect(() => {
-    if (transcript && !isListening) handleSendRef.current(transcript);
-  }, [transcript, isListening]);
 
   // ── Speech error → show text input ────────────────────────────────────────
   useEffect(() => {
@@ -1123,8 +1253,8 @@ export const VoiceInterface = () => {
 
         if (scRes.ok) {
           const s = await scRes.json() as {
-            scenarios: Array<{ scenarioId: string; titleEn: string; titleZh: string; objective: string }>;
-            recommended: Array<{ scenarioId: string; titleEn: string; titleZh: string; objective: string }>;
+            scenarios: ScenarioOption[];
+            recommended: ScenarioOption[];
           };
           setScenarios(s.scenarios ?? []);
           setRecommendedScenarios(s.recommended ?? []);
@@ -1137,7 +1267,7 @@ export const VoiceInterface = () => {
               mainScenarioId: string;
               focusCorrections: string[];
               suggestedDurationMin: number;
-              mainScenario?: { titleEn: string; titleZh: string; objective: string } | null;
+              mainScenario?: Omit<ScenarioOption, 'scenarioId'> | null;
             };
           };
           if (p.plan) setTodayPlan(p.plan);
@@ -1219,13 +1349,15 @@ export const VoiceInterface = () => {
     currentConvIdRef.current = null;
     currentConvTitleRef.current = '';
     setMessages([]);
+    resetSegmentedTtsState();
     stop();
-  }, [setCurrentConversationId, setMessages, stop]);
+  }, [resetSegmentedTtsState, setCurrentConversationId, setMessages, stop]);
 
   // ── Clear / delete current conversation ──────────────────────────────────
   const handleClear = useCallback(async () => {
     const convId = currentConvIdRef.current;
     setMessages([]);
+    resetSegmentedTtsState();
     stop();
     if (convId) {
       removeConversation(convId);
@@ -1233,13 +1365,14 @@ export const VoiceInterface = () => {
       currentConvIdRef.current = null;
       fetch(`/api/conversations/${convId}`, { method: 'DELETE' }).catch(console.error);
     }
-  }, [removeConversation, setCurrentConversationId, setMessages, stop]);
+  }, [removeConversation, resetSegmentedTtsState, setCurrentConversationId, setMessages, stop]);
 
-  const handleMicClick = useCallback(() => { unlock(); stop(); startListening(inputLang); }, [unlock, stop, startListening, inputLang]);
+  const handleMicClick = useCallback(() => { unlock(); resetSegmentedTtsState(); stop(); startListening(inputLang); }, [unlock, resetSegmentedTtsState, stop, startListening, inputLang]);
   const handleReplay = useCallback((text: string) => { unlock(); speak(text, activeVoiceId); }, [unlock, speak, activeVoiceId]);
   const handleTextSend = useCallback((text: string) => { unlock(); handleSendRef.current(text); }, [unlock]);
   const applyScenario = useCallback((scenarioId: string) => {
     if (isLoading || limitReached || scenarioLaunchingId) return;
+    unlock();
     const source = [
       ...(todayPlan?.mainScenario ? [{
         scenarioId: todayPlan.mainScenarioId,
@@ -1257,10 +1390,20 @@ export const VoiceInterface = () => {
     updateSettings({
       topic: `${picked.titleEn}: ${picked.objective}`,
     });
+    settingsRef.current = useChatStore.getState().settings;
     const starter = `Let's practice this scenario: ${picked.titleEn}. Goal: ${picked.objective}. Please start the role-play naturally and guide me with short feedback.`;
     handleSendRef.current(starter);
     setTimeout(() => setScenarioLaunchingId(null), 450);
-  }, [isLoading, limitReached, recommendedScenarios, scenarioLaunchingId, scenarios, todayPlan, updateSettings]);
+  }, [isLoading, limitReached, recommendedScenarios, scenarioLaunchingId, scenarios, todayPlan, unlock, updateSettings]);
+
+  const handleStartFreeChat = useCallback(() => {
+    if (isLoading || limitReached || scenarioLaunchingId) return;
+    unlock();
+    setSelectedScenarioId(null);
+    updateSettings({ topic: 'Free Conversation' });
+    settingsRef.current = useChatStore.getState().settings;
+    handleSendRef.current('Let us have a free English chat. Please choose a topic naturally and keep giving short feedback.');
+  }, [isLoading, limitReached, scenarioLaunchingId, unlock, updateSettings]);
 
   // ── Persona switch ─────────────────────────────────────────────────────────
   const handlePersonaSwitch = useCallback((p: Persona) => {
@@ -1272,8 +1415,9 @@ export const VoiceInterface = () => {
     currentConvIdRef.current = null;
     currentConvTitleRef.current = '';
     setMessages([]);
+    resetSegmentedTtsState();
     stop();
-  }, [selectedPersona, setPersona, setCurrentConversationId, setMessages, stop]);
+  }, [resetSegmentedTtsState, selectedPersona, setPersona, setCurrentConversationId, setMessages, stop]);
 
   useEffect(() => {
     if (!showPersonaSwitcher) return;
@@ -1328,9 +1472,136 @@ export const VoiceInterface = () => {
     );
   })() : null;
 
-  const todayMain = todayPlan?.mainScenarioId
-    ? scenarios.find(s => s.scenarioId === todayPlan.mainScenarioId) ?? todayPlan.mainScenario
-    : null;
+  const todayMainScenario = useMemo<ScenarioOption | null>(() => {
+    if (!todayPlan?.mainScenarioId) return null;
+    const inCatalog = scenarios.find(s => s.scenarioId === todayPlan.mainScenarioId);
+    if (inCatalog) return inCatalog;
+    if (!todayPlan.mainScenario) return null;
+    return {
+      scenarioId: todayPlan.mainScenarioId,
+      titleEn: todayPlan.mainScenario.titleEn,
+      titleZh: todayPlan.mainScenario.titleZh,
+      objective: todayPlan.mainScenario.objective,
+    };
+  }, [scenarios, todayPlan]);
+
+  const homeRecommendedScenarios = useMemo<ScenarioOption[]>(() => {
+    const picks: ScenarioOption[] = [];
+    const seen = new Set<string>();
+    const mainId = todayMainScenario?.scenarioId ?? todayPlan?.mainScenarioId ?? null;
+
+    const tryPush = (scenario: ScenarioOption) => {
+      if (picks.length >= 4) return;
+      if (!scenario?.scenarioId) return;
+      if (seen.has(scenario.scenarioId)) return;
+      if (mainId && scenario.scenarioId === mainId) return;
+      seen.add(scenario.scenarioId);
+      picks.push(scenario);
+    };
+
+    recommendedScenarios.forEach(tryPush);
+    if (picks.length < 4) scenarios.forEach(tryPush);
+    return picks;
+  }, [recommendedScenarios, scenarios, todayMainScenario?.scenarioId, todayPlan?.mainScenarioId]);
+
+  const scenarioLookup = useMemo(() => {
+    const ordered = [
+      ...(todayMainScenario ? [todayMainScenario] : []),
+      ...homeRecommendedScenarios,
+      ...recommendedScenarios,
+      ...scenarios,
+    ];
+    const map = new Map<string, ScenarioOption>();
+    for (const scenario of ordered) {
+      if (!map.has(scenario.scenarioId)) map.set(scenario.scenarioId, scenario);
+    }
+    return map;
+  }, [todayMainScenario, homeRecommendedScenarios, recommendedScenarios, scenarios]);
+
+  const defaultHomeScenarioId = useMemo(() => {
+    return todayMainScenario?.scenarioId
+      ?? todayPlan?.mainScenarioId
+      ?? homeRecommendedScenarios[0]?.scenarioId
+      ?? null;
+  }, [homeRecommendedScenarios, todayMainScenario?.scenarioId, todayPlan?.mainScenarioId]);
+
+  useEffect(() => {
+    if (selectedScenarioId && scenarioLookup.has(selectedScenarioId)) return;
+    if (selectedScenarioId === defaultHomeScenarioId) return;
+    setSelectedScenarioId(defaultHomeScenarioId);
+  }, [defaultHomeScenarioId, scenarioLookup, selectedScenarioId]);
+
+  const activeHomeScenarioId = selectedScenarioId && scenarioLookup.has(selectedScenarioId)
+    ? selectedScenarioId
+    : defaultHomeScenarioId;
+  const activeHomeScenario = activeHomeScenarioId ? (scenarioLookup.get(activeHomeScenarioId) ?? null) : null;
+
+  const handleSend = useCallback((content: string) => {
+    if (!content.trim()) return;
+
+    // Client-side pre-check: block if quota is already exhausted
+    if (usage && usage.window !== 'unlimited' && usage.used >= usage.limit) {
+      setLimitReached(true);
+      return;
+    }
+
+    let convId = currentConvIdRef.current;
+    let convTitle = '';
+
+    if (!convId) {
+      // New conversation: align chat topic with Today's plan / selected scenario so the
+      // model receives the same context as "Start this scenario" (see applyScenario).
+      const topicNow = useChatStore.getState().settings.topic;
+      if (activeHomeScenario && topicNow !== 'Free Conversation') {
+        updateSettings({
+          topic: `${activeHomeScenario.titleEn}: ${activeHomeScenario.objective}`,
+        });
+        settingsRef.current = useChatStore.getState().settings;
+      }
+
+      convId = generateId();
+      convTitle = content.length > 45 ? content.slice(0, 45) + '…' : content;
+      const newConv: Conversation = { id: convId, title: convTitle, created_at: Date.now(), updated_at: Date.now() };
+      addConversation(newConv);
+      setCurrentConversationId(convId);
+      currentConvIdRef.current = convId;
+      currentConvTitleRef.current = convTitle;
+    } else {
+      const existing = conversations.find(c => c.id === convId);
+      currentConvTitleRef.current = existing?.title ?? '';
+    }
+
+    setTranscript('');
+    resetSegmentedTtsState();
+    stop();
+    sendMessage({ text: content });
+  }, [activeHomeScenario, addConversation, conversations, resetSegmentedTtsState, sendMessage, setCurrentConversationId, setTranscript, stop, updateSettings, usage]);
+
+  useEffect(() => { handleSendRef.current = handleSend; }, [handleSend]);
+
+  useEffect(() => {
+    if (transcript && !isListening) handleSendRef.current(transcript);
+  }, [transcript, isListening]);
+
+  const handleSwapScenario = useCallback(() => {
+    if (isLoading || limitReached || scenarioLaunchingId) return;
+    if (!homeRecommendedScenarios.length) return;
+    const poolIds = homeRecommendedScenarios.map(s => s.scenarioId);
+    const currentIndex = activeHomeScenarioId ? poolIds.indexOf(activeHomeScenarioId) : -1;
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % poolIds.length : 0;
+    setSelectedScenarioId(poolIds[nextIndex]);
+  }, [activeHomeScenarioId, homeRecommendedScenarios, isLoading, limitReached, scenarioLaunchingId]);
+
+  const handleStartSelectedScenario = useCallback(() => {
+    if (!activeHomeScenarioId) return;
+    applyScenario(activeHomeScenarioId);
+  }, [activeHomeScenarioId, applyScenario]);
+
+  const handleApplyScenarioFromPicker = useCallback(() => {
+    if (!activeHomeScenarioId) return;
+    setShowScenarioPicker(false);
+    applyScenario(activeHomeScenarioId);
+  }, [activeHomeScenarioId, applyScenario]);
 
   const limitBanner = limitReached && usage ? (() => {
     const resetMs = usage.resetAt;
@@ -1392,7 +1663,7 @@ export const VoiceInterface = () => {
         {isListening && <span className="absolute top-1 right-1 w-2 h-2 rounded-full" style={{ background: pa, animation: 'pingRing 1s ease-out infinite' }} />}
       </button>
 
-      <button onClick={() => { stop(); stopChat(); }}
+      <button onClick={() => { resetSegmentedTtsState(); stop(); stopChat(); }}
         className="w-9 h-9 rounded-xl flex items-center justify-center transition-all cursor-pointer"
         style={{ background: isSpeaking ? `rgba(${paRgb},.15)` : theme.bgInput, border: `1px solid ${isSpeaking ? `rgba(${paRgb},.3)` : theme.bgInputBorder}`, color: isSpeaking ? pa : theme.textMuted }}>
         <Square size={14} />
@@ -1409,6 +1680,123 @@ export const VoiceInterface = () => {
 
   // ── Filtered messages for display ─────────────────────────────────────────
   const displayMessages = chatMessages.filter(m => m.role === 'user' || m.role === 'assistant');
+
+  const renderPlanEntryCard = (mobile = false) => {
+    const hasAnyPlanContent = !!todayPlan || !!todayMainScenario || homeRecommendedScenarios.length > 0;
+    if (!hasAnyPlanContent) return null;
+
+    const focusItems = (todayPlan?.focusCorrections ?? []).slice(0, 2);
+    const extraFocusCount = Math.max(0, (todayPlan?.focusCorrections?.length ?? 0) - focusItems.length);
+    const isStartDisabled = !activeHomeScenarioId || !!scenarioLaunchingId || isLoading || limitReached;
+    const isSwapDisabled = homeRecommendedScenarios.length === 0 || !!scenarioLaunchingId || isLoading || limitReached;
+    const startLabel = scenarioLaunchingId === activeHomeScenarioId ? 'Launching...' : 'Start this scenario';
+
+    return (
+      <div
+        className={`w-full rounded-2xl border text-left ${mobile ? 'p-3' : 'p-4'}`}
+        style={{ background: theme.bgCard, borderColor: theme.bgCardBorder }}
+      >
+        <p className={`${mobile ? 'text-[11px]' : 'text-xs'} font-semibold`} style={{ color: theme.accentText }}>
+          {todayPlan ? "Today's plan" : 'Recommended practice'}
+        </p>
+        {todayPlan?.goal ? (
+          <p className={`${mobile ? 'text-xs' : 'text-sm'} font-medium mt-1`} style={{ color: theme.textPrimary }}>
+            {todayPlan.goal}
+          </p>
+        ) : null}
+        {todayMainScenario ? (
+          <p className={`${mobile ? 'text-[10px]' : 'text-xs'} mt-1.5`} style={{ color: theme.textMuted }}>
+            Main scenario: {todayMainScenario.titleEn} ({todayMainScenario.titleZh})
+          </p>
+        ) : null}
+        {activeHomeScenario && todayMainScenario && activeHomeScenario.scenarioId !== todayMainScenario.scenarioId ? (
+          <p className={`${mobile ? 'text-[10px]' : 'text-xs'} mt-1`} style={{ color: theme.accentPale }}>
+            Selected: {activeHomeScenario.titleEn} ({activeHomeScenario.titleZh})
+          </p>
+        ) : null}
+        {todayPlan ? (
+          <p className={`${mobile ? 'text-[10px]' : 'text-xs'} mt-1`} style={{ color: theme.textDimmer }}>
+            Suggested duration: {todayPlan.suggestedDurationMin} min
+          </p>
+        ) : null}
+        {focusItems.length ? (
+          <p className={`${mobile ? 'text-[10px]' : 'text-xs'} mt-1`} style={{ color: theme.textDimmer }}>
+            Focus: {focusItems.join(' / ')}{extraFocusCount > 0 ? ` +${extraFocusCount}` : ''}
+          </p>
+        ) : null}
+
+        {homeRecommendedScenarios.length > 0 ? (
+          <div className="mt-3">
+            <p className={`${mobile ? 'text-[11px]' : 'text-xs'} font-semibold mb-2`} style={{ color: theme.textMuted }}>
+              Recommended scenarios
+            </p>
+            <div className={`grid gap-2 ${mobile ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+              {homeRecommendedScenarios.map(s => {
+                const isSelected = activeHomeScenarioId === s.scenarioId;
+                return (
+                  <button
+                    key={s.scenarioId}
+                    onClick={() => {
+                      if (isSelected) {
+                        if (defaultHomeScenarioId) setSelectedScenarioId(defaultHomeScenarioId);
+                      } else {
+                        setSelectedScenarioId(s.scenarioId);
+                      }
+                    }}
+                    disabled={!!scenarioLaunchingId || isLoading || limitReached}
+                    className="rounded-xl border text-left cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed p-2.5"
+                    style={{
+                      background: isSelected ? theme.bgCard : theme.bgInput,
+                      borderColor: isSelected ? '#c96442' : theme.bgInputBorder,
+                    }}
+                  >
+                    <p className="text-xs font-semibold" style={{ color: theme.textPrimary }}>
+                      {s.titleEn}
+                    </p>
+                    <p className="text-[10px] mt-0.5" style={{ color: theme.textDimmer }}>
+                      {s.titleZh}
+                    </p>
+                    {isSelected ? (
+                      <p className="text-[10px] mt-1" style={{ color: '#c96442' }}>
+                        Selected
+                      </p>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        <div className={`mt-3 flex gap-2 ${mobile ? 'flex-col' : 'items-center'}`}>
+          <button
+            onClick={handleStartSelectedScenario}
+            disabled={isStartDisabled}
+            className={`${mobile ? 'w-full text-[11px]' : 'text-xs'} px-3 py-1.5 rounded-lg font-medium cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
+            style={{ background: '#c96442', color: '#fff' }}
+          >
+            {startLabel}
+          </button>
+          <button
+            onClick={handleSwapScenario}
+            disabled={isSwapDisabled}
+            className={`${mobile ? 'w-full text-[11px]' : 'text-xs'} px-3 py-1.5 rounded-lg font-medium border cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
+            style={{ background: theme.bgInput, color: theme.textMuted, borderColor: theme.bgInputBorder }}
+          >
+            Swap scenario
+          </button>
+          <button
+            onClick={() => setShowScenarioPicker(true)}
+            disabled={!!scenarioLaunchingId || isLoading || limitReached}
+            className={`${mobile ? 'w-full text-[11px]' : 'text-xs ml-auto'} px-3 py-1.5 rounded-lg font-medium border cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5`}
+            style={{ background: theme.bgInput, color: theme.textMuted, borderColor: theme.bgInputBorder }}
+          >
+            <BookOpen size={12} /> More scenarios
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   // ─────────────────────────────────────────────────────────────────────────────
   //  RENDER
@@ -1495,6 +1883,90 @@ export const VoiceInterface = () => {
                 style={{ background: '#c96442', color: '#fff' }}
               >
                 {assessmentSubmitting ? 'Saving…' : 'Complete assessment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showScenarioPicker && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,.62)' }}>
+          <div
+            className="w-full max-w-3xl rounded-2xl border p-4 sm:p-5"
+            style={{ background: theme.bgSidebar, borderColor: theme.bgSidebarBorder, boxShadow: '0 20px 80px rgba(0,0,0,.35)' }}
+          >
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-base sm:text-lg font-semibold" style={{ color: theme.textPrimary }}>
+                  Choose a scenario
+                </h3>
+                <p className="text-xs sm:text-sm mt-1" style={{ color: theme.textMuted }}>
+                  Browse all available scenarios and pick one for your next role-play.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowScenarioPicker(false)}
+                className="w-8 h-8 rounded-xl flex items-center justify-center cursor-pointer"
+                style={{ color: theme.textMuted, background: theme.bgInput, border: `1px solid ${theme.bgInputBorder}` }}
+                aria-label="Close scenario picker"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div
+              className="max-h-[56vh] overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-2"
+              style={{ scrollbarWidth: 'thin', scrollbarColor: `${theme.scrollbarColor} transparent` }}
+            >
+              {scenarios.map((scenario) => {
+                const isSelected = activeHomeScenarioId === scenario.scenarioId;
+                return (
+                  <button
+                    key={scenario.scenarioId}
+                    onClick={() => setSelectedScenarioId(scenario.scenarioId)}
+                    disabled={!!scenarioLaunchingId || isLoading || limitReached}
+                    className="rounded-xl border text-left cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed p-3"
+                    style={{
+                      background: isSelected ? theme.bgCard : theme.bgInput,
+                      borderColor: isSelected ? '#c96442' : theme.bgInputBorder,
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs sm:text-sm font-semibold" style={{ color: theme.textPrimary }}>
+                        {scenario.titleEn}
+                      </p>
+                      {isSelected ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ color: '#c96442', background: 'rgba(201,100,66,.12)' }}>
+                          Selected
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-[10px] sm:text-xs mt-1" style={{ color: theme.textMuted }}>
+                      {scenario.titleZh}
+                    </p>
+                    <p className="text-[10px] mt-1.5 line-clamp-2" style={{ color: theme.textDimmer }}>
+                      {scenario.objective}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-end">
+              <button
+                onClick={() => setShowScenarioPicker(false)}
+                className="px-3 py-2 rounded-lg text-xs sm:text-sm font-medium border cursor-pointer"
+                style={{ background: theme.bgInput, color: theme.textMuted, borderColor: theme.bgInputBorder }}
+              >
+                Close
+              </button>
+              <button
+                onClick={handleApplyScenarioFromPicker}
+                disabled={!activeHomeScenarioId || !!scenarioLaunchingId || isLoading || limitReached}
+                className="px-3 py-2 rounded-lg text-xs sm:text-sm font-medium cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ background: '#c96442', color: '#fff' }}
+              >
+                Start selected scenario
               </button>
             </div>
           </div>
@@ -1753,62 +2225,7 @@ export const VoiceInterface = () => {
             {displayMessages.length === 0 ? (
               <div className="min-h-full flex items-center justify-center py-6">
                 <section className="w-full max-w-3xl flex flex-col gap-3">
-                  {todayPlan && (
-                    <div className="rounded-2xl p-4 border text-left"
-                      style={{ background: theme.bgCard, borderColor: theme.bgCardBorder }}>
-                      <p className="text-xs font-semibold mb-1" style={{ color: theme.accentText }}>Today&apos;s plan</p>
-                      <p className="text-sm font-medium" style={{ color: theme.textPrimary }}>{todayPlan.goal}</p>
-                      {todayMain && (
-                        <p className="text-xs mt-1.5" style={{ color: theme.textMuted }}>
-                          Main scenario: {todayMain.titleEn} ({todayMain.titleZh})
-                        </p>
-                      )}
-                      <p className="text-xs mt-1" style={{ color: theme.textDimmer }}>
-                        Suggested duration: {todayPlan.suggestedDurationMin} min
-                      </p>
-                      {todayPlan.focusCorrections?.length ? (
-                        <p className="text-xs mt-1" style={{ color: theme.textDimmer }}>
-                          Focus: {todayPlan.focusCorrections.join(' · ')}
-                        </p>
-                      ) : null}
-                      {todayPlan.mainScenarioId && (
-                        <button
-                          onClick={() => applyScenario(todayPlan.mainScenarioId)}
-                        disabled={!!scenarioLaunchingId || isLoading || limitReached}
-                        className="mt-3 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                          style={{ background: '#c96442', color: '#fff' }}
-                        >
-                        {scenarioLaunchingId === todayPlan.mainScenarioId ? 'Launching…' : 'Start this scenario'}
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  {recommendedScenarios.length > 0 && (
-                    <div className="rounded-2xl p-4 border"
-                      style={{ background: theme.bgCard, borderColor: theme.bgCardBorder }}>
-                      <p className="text-xs font-semibold mb-2 text-left" style={{ color: theme.textMuted }}>Recommended scenarios</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {recommendedScenarios.slice(0, 4).map(s => (
-                          <button
-                            key={s.scenarioId}
-                            onClick={() => applyScenario(s.scenarioId)}
-                            disabled={!!scenarioLaunchingId || isLoading || limitReached}
-                            className="p-2.5 rounded-xl border text-left cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                            style={{
-                              background: selectedScenarioId === s.scenarioId ? theme.bgCard : theme.bgInput,
-                              borderColor: selectedScenarioId === s.scenarioId ? '#c96442' : theme.bgInputBorder,
-                            }}>
-                            <p className="text-xs font-semibold" style={{ color: theme.textPrimary }}>{s.titleEn}</p>
-                            <p className="text-[10px] mt-0.5" style={{ color: theme.textDimmer }}>{s.titleZh}</p>
-                            {selectedScenarioId === s.scenarioId && (
-                              <p className="text-[10px] mt-1" style={{ color: '#c96442' }}>Selected</p>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  {renderPlanEntryCard(false)}
                 </section>
               </div>
             ) : displayMessages.map(m => (
@@ -1841,6 +2258,15 @@ export const VoiceInterface = () => {
             <div className="flex flex-col items-center gap-2">
               <Controls />
               <div className="flex items-center gap-4">
+                <button
+                  onClick={handleStartFreeChat}
+                  disabled={isLoading || limitReached || !!scenarioLaunchingId}
+                  className="flex items-center gap-1.5 text-[11px] cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  style={{ color: theme.textMuted }}
+                  onMouseEnter={e => (e.currentTarget.style.color = theme.accentText)}
+                  onMouseLeave={e => (e.currentTarget.style.color = theme.textMuted)}>
+                  <MessageSquare size={11} /> Free chat
+                </button>
                 <button onClick={handleClear}
                   className="flex items-center gap-1.5 text-[11px] cursor-pointer transition-colors"
                   style={{ color: theme.textMuted }}
@@ -1884,11 +2310,6 @@ export const VoiceInterface = () => {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <button onClick={handleClear}
-              className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer"
-              style={{ color: theme.textMuted, background: theme.bgInput }}>
-              <RotateCcw size={15} />
-            </button>
             {session?.user && (
               <img src={session.user.image ?? ''} alt="" referrerPolicy="no-referrer"
                 className="w-8 h-8 rounded-full object-cover border cursor-pointer"
@@ -1983,28 +2404,7 @@ export const VoiceInterface = () => {
           style={{ scrollbarWidth: 'none' }}>
           {displayMessages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-start text-center gap-4 pt-2 pb-5">
-              {todayPlan && (
-                <div className="w-full rounded-2xl p-3 border text-left"
-                  style={{ background: theme.bgCard, borderColor: theme.bgCardBorder }}>
-                  <p className="text-[11px] font-semibold" style={{ color: theme.accentText }}>Today&apos;s plan</p>
-                  <p className="text-xs mt-1" style={{ color: theme.textPrimary }}>{todayPlan.goal}</p>
-                  {todayMain && (
-                    <p className="text-[10px] mt-1" style={{ color: theme.textMuted }}>
-                      {todayMain.titleEn} ({todayMain.titleZh})
-                    </p>
-                  )}
-                  {todayPlan.mainScenarioId && (
-                    <button
-                      onClick={() => applyScenario(todayPlan.mainScenarioId)}
-                      disabled={!!scenarioLaunchingId || isLoading || limitReached}
-                      className="mt-2 px-3 py-1.5 rounded-lg text-[11px] font-medium cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                      style={{ background: '#c96442', color: '#fff' }}
-                    >
-                      {scenarioLaunchingId === todayPlan.mainScenarioId ? 'Launching…' : 'Start this scenario'}
-                    </button>
-                  )}
-                </div>
-              )}
+              {renderPlanEntryCard(true)}
               <div className="pt-1">
                 <p className="text-sm font-semibold mb-1" style={{ color: theme.textPrimary }}>Choose your partner</p>
                 <p className="text-[11px]" style={{ color: theme.textMuted }}>Tap a character to select</p>
@@ -2014,28 +2414,6 @@ export const VoiceInterface = () => {
                   <PersonaCard key={p} persona={p} selected={selectedPersona === p} onSelect={() => setPersona(p)} />
                 ))}
               </div>
-              {recommendedScenarios.length > 0 && (
-                <div className="w-full flex flex-col gap-2">
-                  <p className="text-[11px] text-left font-semibold" style={{ color: theme.textMuted }}>Recommended scenarios</p>
-                  {recommendedScenarios.slice(0, 2).map(s => (
-                    <button
-                      key={s.scenarioId}
-                      onClick={() => applyScenario(s.scenarioId)}
-                      disabled={!!scenarioLaunchingId || isLoading || limitReached}
-                      className="p-2.5 rounded-xl border text-left cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                      style={{
-                        background: selectedScenarioId === s.scenarioId ? theme.bgCard : theme.bgInput,
-                        borderColor: selectedScenarioId === s.scenarioId ? '#c96442' : theme.bgInputBorder,
-                      }}>
-                      <p className="text-xs font-semibold" style={{ color: theme.textPrimary }}>{s.titleEn}</p>
-                      <p className="text-[10px]" style={{ color: theme.textDimmer }}>{s.titleZh}</p>
-                      {selectedScenarioId === s.scenarioId && (
-                        <p className="text-[10px] mt-1" style={{ color: '#c96442' }}>Selected</p>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
               {!hasAssessment && (
                 <button
                   onClick={() => setShowAssessment(true)}
@@ -2075,6 +2453,21 @@ export const VoiceInterface = () => {
         <footer className="relative z-10 flex-shrink-0 px-5 pb-8 pt-3 border-t"
           style={{ borderColor: theme.bgFooterBorder, background: theme.bgFooter, backdropFilter: 'blur(16px)' }}>
           <Controls />
+          <div className="flex items-center justify-center gap-4 mt-3">
+            <button
+              onClick={handleStartFreeChat}
+              disabled={isLoading || limitReached || !!scenarioLaunchingId}
+              className="flex items-center gap-1.5 text-[11px] cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              style={{ color: theme.textMuted }}>
+              <MessageSquare size={12} /> Free chat
+            </button>
+            <button
+              onClick={handleClear}
+              className="flex items-center gap-1.5 text-[11px] cursor-pointer transition-colors"
+              style={{ color: theme.textMuted }}>
+              <RotateCcw size={12} /> Clear chat
+            </button>
+          </div>
           <div className="flex items-center justify-center gap-3 mt-3">
             <p className="text-center text-[10px] tracking-wide" style={{ color: theme.textDimmer }}>
               {inputLang === 'zh-CN' ? '中文输入 · 英文回复' : 'EN input · EN reply'}

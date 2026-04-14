@@ -1,5 +1,17 @@
 import { useCallback, useState, useRef } from 'react';
 
+type QueuedSegment = {
+  utteranceId: string;
+  segmentId: string;
+  text: string;
+  voiceId?: string | null;
+};
+
+type PrefetchedAudio = {
+  url: string;
+  text: string;
+};
+
 export const useTextToSpeech = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
 
@@ -11,7 +23,13 @@ export const useTextToSpeech = () => {
 
   // ── Fish Audio refs ───────────────────────────────────────────────────────
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const fetchControllersRef = useRef<Set<AbortController>>(new Set());
+  const queueRef = useRef<QueuedSegment[]>([]);
+  const processingRef = useRef(false);
+  const activeUtteranceRef = useRef<string | null>(null);
+  const generationRef = useRef(0);
+  const prefetchedAudioRef = useRef<Map<string, PrefetchedAudio>>(new Map());
+  const inflightPrefetchRef = useRef<Map<string, Promise<PrefetchedAudio | null>>>(new Map());
 
   // ── Browser TTS helpers ───────────────────────────────────────────────────
   const startResumeHeartbeat = useCallback(() => {
@@ -28,9 +46,9 @@ export const useTextToSpeech = () => {
   }, []);
 
   const doBrowserSpeak = useCallback(
-    (text: string) => {
+    (text: string): Promise<void> => {
       const clean = text.replace(/[*#_`]/g, '').trim();
-      if (!clean) return;
+      if (!clean) return Promise.resolve();
 
       window.speechSynthesis.resume();
       window.speechSynthesis.cancel();
@@ -42,35 +60,42 @@ export const useTextToSpeech = () => {
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
-      utterance.onstart = () => { setIsSpeaking(true); startResumeHeartbeat(); };
+      return new Promise((resolve) => {
+        utterance.onstart = () => { setIsSpeaking(true); startResumeHeartbeat(); };
       utterance.onend = () => {
         setIsSpeaking(false);
         utteranceRef.current = null;
         if (resumeTimerRef.current) { clearInterval(resumeTimerRef.current); resumeTimerRef.current = null; }
+          resolve();
       };
       utterance.onerror = (e) => {
         if (e.error !== 'interrupted' && e.error !== 'canceled') console.warn('TTS error:', e.error);
         setIsSpeaking(false);
         utteranceRef.current = null;
+          resolve();
       };
 
-      setTimeout(() => { window.speechSynthesis.resume(); window.speechSynthesis.speak(utterance); }, 80);
+        setTimeout(() => { window.speechSynthesis.resume(); window.speechSynthesis.speak(utterance); }, 80);
+      });
     },
     [startResumeHeartbeat],
   );
 
-  // ── Fish Audio TTS ────────────────────────────────────────────────────────
-  const doFishAudioSpeak = useCallback(
-    async (text: string, voiceId: string) => {
+  const clearPrefetchedAudio = useCallback(() => {
+    for (const item of prefetchedAudioRef.current.values()) {
+      URL.revokeObjectURL(item.url);
+    }
+    prefetchedAudioRef.current.clear();
+    inflightPrefetchRef.current.clear();
+  }, []);
+
+  const fetchFishAudioSegment = useCallback(
+    async (text: string, voiceId: string): Promise<PrefetchedAudio | null> => {
       const clean = text.replace(/[*#_`]/g, '').trim();
-      if (!clean) return;
+      if (!clean) return null;
 
-      // Cancel any in-flight request
-      if (abortControllerRef.current) abortControllerRef.current.abort();
       const controller = new AbortController();
-      abortControllerRef.current = controller;
-
-      setIsSpeaking(true);
+      fetchControllersRef.current.add(controller);
 
       try {
         const res = await fetch('/api/tts', {
@@ -82,77 +107,98 @@ export const useTextToSpeech = () => {
 
         if (!res.ok) {
           if (res.status === 503) {
-            setIsSpeaking(false);
-            abortControllerRef.current = null;
-            doBrowserSpeak(text);
-            return;
+            return null;
           }
           throw new Error(`TTS API ${res.status}`);
         }
 
         const arrayBuffer = await res.arrayBuffer();
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) return null;
 
         const contentType = res.headers.get('content-type') ?? 'audio/mpeg';
-        console.log('[tts-client] received audio, size:', arrayBuffer.byteLength,
-          'content-type:', contentType);
-
-        if (arrayBuffer.byteLength === 0) throw new Error('Empty audio response');
-
-        // Revoke previous blob URL if any
-        if (audioElementRef.current) {
-          audioElementRef.current.pause();
-          const prevSrc = audioElementRef.current.src;
-          if (prevSrc?.startsWith('blob:')) URL.revokeObjectURL(prevSrc);
-        }
+        console.log('[tts-client] prefetched audio, size:', arrayBuffer.byteLength, 'content-type:', contentType);
+        if (arrayBuffer.byteLength === 0) return null;
 
         const audioBlob = new Blob([arrayBuffer], { type: contentType });
         const url = URL.createObjectURL(audioBlob);
-        const audio = new Audio(url);
-        audio.preload = 'auto';
-        audioElementRef.current = audio;
-
-        audio.onended = () => {
-          setIsSpeaking(false);
-          URL.revokeObjectURL(url);
-          audioElementRef.current = null;
-          abortControllerRef.current = null;
-        };
-        audio.onerror = (e) => {
-          console.warn('[tts-client] Audio element error:', (e as ErrorEvent)?.message ?? audio.error?.message ?? 'unknown');
-          setIsSpeaking(false);
-          URL.revokeObjectURL(url);
-          audioElementRef.current = null;
-          abortControllerRef.current = null;
-          doBrowserSpeak(text);
-        };
-
-        try {
-          await audio.play();
-        } catch (playErr) {
-          console.warn('[tts-client] play() rejected:', (playErr as Error).message);
-          setIsSpeaking(false);
-          URL.revokeObjectURL(url);
-          audioElementRef.current = null;
-          abortControllerRef.current = null;
-          doBrowserSpeak(text);
-        }
+        return { url, text: clean };
       } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
+        if ((err as Error).name === 'AbortError') return null;
         if (err instanceof TypeError) {
-          setIsSpeaking(false);
-          abortControllerRef.current = null;
-          doBrowserSpeak(text);
-          return;
+          return null;
         }
-        console.error('[tts] Fish Audio failed, falling back to browser TTS:', err);
-        setIsSpeaking(false);
-        abortControllerRef.current = null;
-        // Graceful fallback to browser TTS
-        doBrowserSpeak(text);
+        console.error('[tts] Fish Audio prefetch failed:', err);
+        return null;
+      } finally {
+        fetchControllersRef.current.delete(controller);
       }
     },
-    [doBrowserSpeak],
+    [],
+  );
+
+  const playPrefetchedAudio = useCallback(async (audioData: PrefetchedAudio): Promise<boolean> => {
+    setIsSpeaking(true);
+    const audio = new Audio(audioData.url);
+    audio.preload = 'auto';
+    audioElementRef.current = audio;
+
+    return new Promise<boolean>((resolve) => {
+      audio.onended = () => {
+        setIsSpeaking(false);
+        audioElementRef.current = null;
+        URL.revokeObjectURL(audioData.url);
+        resolve(true);
+      };
+      audio.onerror = (e) => {
+        console.warn('[tts-client] Audio element error:', (e as ErrorEvent)?.message ?? audio.error?.message ?? 'unknown');
+        setIsSpeaking(false);
+        audioElementRef.current = null;
+        URL.revokeObjectURL(audioData.url);
+        resolve(false);
+      };
+      audio.play().catch((playErr) => {
+        console.warn('[tts-client] play() rejected:', (playErr as Error).message);
+        setIsSpeaking(false);
+        audioElementRef.current = null;
+        URL.revokeObjectURL(audioData.url);
+        resolve(false);
+      });
+    });
+  }, []);
+
+  const getOrPrefetchSegment = useCallback((segment: QueuedSegment) => {
+    const cached = prefetchedAudioRef.current.get(segment.segmentId);
+    if (cached) return Promise.resolve(cached);
+    const inflight = inflightPrefetchRef.current.get(segment.segmentId);
+    if (inflight) return inflight;
+    if (!segment.voiceId) return Promise.resolve(null);
+
+    const task = fetchFishAudioSegment(segment.text, segment.voiceId)
+      .then((audioData) => {
+        if (audioData) prefetchedAudioRef.current.set(segment.segmentId, audioData);
+        return audioData;
+      })
+      .finally(() => {
+        inflightPrefetchRef.current.delete(segment.segmentId);
+      });
+    inflightPrefetchRef.current.set(segment.segmentId, task);
+    return task;
+  }, [fetchFishAudioSegment]);
+
+  // ── Fish Audio TTS ────────────────────────────────────────────────────────
+  const doFishAudioSpeak = useCallback(
+    async (text: string, voiceId: string): Promise<void> => {
+      const audioData = await fetchFishAudioSegment(text, voiceId);
+      if (!audioData) {
+        await doBrowserSpeak(text);
+        return;
+      }
+      const ok = await playPrefetchedAudio(audioData);
+      if (!ok) {
+        await doBrowserSpeak(text);
+      }
+    },
+    [doBrowserSpeak, fetchFishAudioSegment, playPrefetchedAudio],
   );
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -163,7 +209,11 @@ export const useTextToSpeech = () => {
       if (pendingRef.current) {
         const { text, voiceId } = pendingRef.current;
         pendingRef.current = null;
-        voiceId ? doFishAudioSpeak(text, voiceId) : doBrowserSpeak(text);
+        if (voiceId) {
+          void doFishAudioSpeak(text, voiceId);
+        } else {
+          void doBrowserSpeak(text);
+        }
       }
       return;
     }
@@ -177,7 +227,11 @@ export const useTextToSpeech = () => {
       if (pendingRef.current) {
         const { text, voiceId } = pendingRef.current;
         pendingRef.current = null;
-        voiceId ? doFishAudioSpeak(text, voiceId) : doBrowserSpeak(text);
+        if (voiceId) {
+          void doFishAudioSpeak(text, voiceId);
+        } else {
+          void doBrowserSpeak(text);
+        }
       }
     };
     primer.onerror = () => { unlockedRef.current = true; };
@@ -212,6 +266,10 @@ export const useTextToSpeech = () => {
   );
 
   const stop = useCallback(() => {
+    generationRef.current += 1;
+    queueRef.current = [];
+    activeUtteranceRef.current = null;
+    processingRef.current = false;
     // Stop browser TTS
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -224,18 +282,86 @@ export const useTextToSpeech = () => {
       if (src?.startsWith('blob:')) URL.revokeObjectURL(src);
       audioElementRef.current = null;
     }
-    // Abort in-flight Fish Audio request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+    // Abort in-flight Fish Audio requests
+    for (const controller of fetchControllersRef.current) {
+      controller.abort();
     }
+    fetchControllersRef.current.clear();
+    clearPrefetchedAudio();
     pendingRef.current = null;
     setIsSpeaking(false);
     if (resumeTimerRef.current) {
       clearInterval(resumeTimerRef.current);
       resumeTimerRef.current = null;
     }
+  }, [clearPrefetchedAudio]);
+
+  const processQueue = useCallback(async (localGeneration: number) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    try {
+      while (queueRef.current.length > 0) {
+        if (localGeneration !== generationRef.current) break;
+        const next = queueRef.current.shift();
+        if (!next) break;
+        if (next.voiceId) {
+          const currentAudio = await getOrPrefetchSegment(next);
+          const upcoming = queueRef.current[0];
+          if (upcoming?.voiceId) {
+            void getOrPrefetchSegment(upcoming);
+          }
+          if (currentAudio) {
+            prefetchedAudioRef.current.delete(next.segmentId);
+            const ok = await playPrefetchedAudio(currentAudio);
+            if (!ok) await doBrowserSpeak(next.text);
+          } else {
+            await doBrowserSpeak(next.text);
+          }
+        } else {
+          await doBrowserSpeak(next.text);
+        }
+      }
+    } finally {
+      processingRef.current = false;
+    }
+  }, [doBrowserSpeak, getOrPrefetchSegment, playPrefetchedAudio]);
+
+  const beginUtterance = useCallback((utteranceId: string) => {
+    if (!utteranceId) return;
+    if (activeUtteranceRef.current !== utteranceId) {
+      generationRef.current += 1;
+      queueRef.current = [];
+      activeUtteranceRef.current = utteranceId;
+      processingRef.current = false;
+      clearPrefetchedAudio();
+    }
+  }, [clearPrefetchedAudio]);
+
+  const enqueueSegment = useCallback((segment: {
+    utteranceId: string;
+    text: string;
+    voiceId?: string | null;
+    segmentId: string;
+  }) => {
+    const clean = segment.text.replace(/[*#_`]/g, '').trim();
+    if (!clean || !segment.utteranceId) return;
+    if (activeUtteranceRef.current !== segment.utteranceId) {
+      beginUtterance(segment.utteranceId);
+    }
+    queueRef.current.push({
+      utteranceId: segment.utteranceId,
+      text: clean,
+      voiceId: segment.voiceId,
+      segmentId: segment.segmentId,
+    });
+    void processQueue(generationRef.current);
+  }, [beginUtterance, processQueue]);
+
+  const endUtterance = useCallback((utteranceId: string) => {
+    if (activeUtteranceRef.current === utteranceId) {
+      activeUtteranceRef.current = null;
+    }
   }, []);
 
-  return { speak, stop, unlock, isSpeaking };
+  return { speak, stop, unlock, isSpeaking, beginUtterance, enqueueSegment, endUtterance };
 };
