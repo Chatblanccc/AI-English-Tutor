@@ -49,7 +49,7 @@ export function getAccessibleScenarios(plan: UserPlan): ScenarioItem[] {
 export function pickRecommendedScenarios(
   plan: UserPlan,
   overallLevel?: string,
-  count = 3,
+  count = 4,
 ): ScenarioItem[] {
   const level = mapOverallToScenarioLevel(overallLevel);
   const maxRank = LEVEL_RANK[level];

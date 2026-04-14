@@ -14,7 +14,7 @@ export async function GET() {
   const plan = await getUserPlan(userId);
   const assessment = await getUserAssessment(userId);
   const scenarios = getAccessibleScenarios(plan);
-  const recommended = pickRecommendedScenarios(plan, assessment?.overallLevel, 3);
+  const recommended = pickRecommendedScenarios(plan, assessment?.overallLevel, 4);
 
   return NextResponse.json({
     plan,
