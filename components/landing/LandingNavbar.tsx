@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
+import { MessageSquare, LogOut } from 'lucide-react';
 import { useLanguageStore } from '@/store/useLanguageStore';
 import { useThemeStore } from '@/store/useThemeStore';
 import { t } from '@/lib/landing-i18n';
@@ -12,6 +13,8 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 export function LandingNavbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
   const { lang, toggleLang } = useLanguageStore();
   const mode = useThemeStore((s) => s.mode);
   const tx = t[lang].nav;
@@ -22,6 +25,24 @@ export function LandingNavbar() {
     const onScroll = () => setScrolled(window.scrollY > 16);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const onClickOutside = (event: MouseEvent) => {
+      if (!userMenuRef.current) return;
+      if (!userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setUserMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('mousedown', onClickOutside);
+      document.removeEventListener('keydown', onEscape);
+    };
   }, []);
 
   const navLinks = [
@@ -101,41 +122,79 @@ export function LandingNavbar() {
           {status === 'loading' ? (
             <span className="text-xs px-2" style={{ color: 'var(--lp-text-subtle)' }} aria-hidden>…</span>
           ) : isLoggedIn ? (
-            <div className="flex items-center gap-2 pl-1">
-              {userImage ? (
-                <img
-                  src={userImage}
-                  alt=""
-                  referrerPolicy="no-referrer"
-                  className="w-8 h-8 rounded-full object-cover border flex-shrink-0"
-                  style={{ borderColor: 'rgba(201,100,66,.35)' }}
-                />
-              ) : (
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                  style={{ background: 'rgba(201,100,66,.2)', color: '#c96442' }}
-                >
-                  {userInitial}
-                </div>
-              )}
-              <span className="text-xs font-medium max-w-[100px] truncate hidden sm:inline" style={{ color: 'var(--lp-text)' }} title={userName}>
-                {userName}
-              </span>
-              <Link
-                href="/chat"
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                style={{ background: 'var(--lp-border)', color: '#c96442', border: '1px solid var(--lp-border-warm)' }}
-              >
-                {tx.goToChat}
-              </Link>
+            <div className="relative pl-1" ref={userMenuRef}>
               <button
                 type="button"
-                onClick={() => signOut({ callbackUrl: '/' })}
-                className="text-xs font-medium px-2 py-1.5 rounded-lg cursor-pointer transition-colors"
-                style={{ color: 'var(--lp-text-muted)' }}
+                onClick={() => setUserMenuOpen(v => !v)}
+                className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer"
+                style={{
+                  background: userMenuOpen ? 'var(--lp-border)' : 'transparent',
+                  border: `1px solid ${userMenuOpen ? 'var(--lp-border-warm)' : 'transparent'}`,
+                }}
+                aria-haspopup="menu"
+                aria-expanded={userMenuOpen}
+                aria-label="Open account menu"
               >
-                {tx.signOut}
+                {userImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={userImage}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    className="w-8 h-8 rounded-full object-cover border flex-shrink-0"
+                    style={{ borderColor: 'rgba(201,100,66,.35)' }}
+                  />
+                ) : (
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    style={{ background: 'rgba(201,100,66,.2)', color: '#c96442' }}
+                  >
+                    {userInitial}
+                  </div>
+                )}
+                <span className="text-xs font-medium max-w-[92px] truncate hidden sm:inline" style={{ color: 'var(--lp-text)' }} title={userName}>
+                  {userName}
+                </span>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M4 6.5L8 10.5L12 6.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </button>
+
+              {userMenuOpen && (
+                <div
+                  className="absolute right-0 top-[calc(100%+8px)] w-44 rounded-xl p-1.5 shadow-xl"
+                  style={{
+                    background: 'var(--lp-bg-nav-scrolled)',
+                    border: '1px solid var(--lp-border)',
+                    backdropFilter: 'blur(12px)',
+                  }}
+                  role="menu"
+                >
+                  <Link
+                    href="/chat"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors cursor-pointer"
+                    style={{ color: 'var(--lp-text)' }}
+                    onClick={() => setUserMenuOpen(false)}
+                    role="menuitem"
+                  >
+                    <MessageSquare size={14} />
+                    {tx.goToChat}
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserMenuOpen(false);
+                      signOut({ callbackUrl: '/' });
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors cursor-pointer"
+                    style={{ color: 'var(--lp-text-muted)' }}
+                    role="menuitem"
+                  >
+                    <LogOut size={14} />
+                    {tx.signOut}
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -211,6 +270,7 @@ export function LandingNavbar() {
             <div className="flex flex-col gap-3 pt-2 border-t" style={{ borderColor: 'var(--lp-border-warm)' }}>
               <div className="flex items-center gap-3">
                 {userImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={userImage} alt="" referrerPolicy="no-referrer" className="w-10 h-10 rounded-full object-cover border" style={{ borderColor: 'rgba(201,100,66,.35)' }} />
                 ) : (
                   <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: 'rgba(201,100,66,.2)', color: '#c96442' }}>

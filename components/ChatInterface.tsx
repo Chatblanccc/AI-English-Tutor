@@ -45,7 +45,6 @@ export const ChatInterface = () => {
       if (!response.ok) throw new Error('Failed to fetch');
 
       const reader = response.body?.getReader();
-      const decoder = new TextEncoder();
       let assistantMessage = '';
 
       // Initialize assistant message

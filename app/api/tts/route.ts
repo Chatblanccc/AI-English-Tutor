@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { auth } from '@/auth';
+import { getUserPlan } from '@/lib/db';
 
 export const runtime = 'nodejs';
 
@@ -17,6 +18,16 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) {
     return new Response('Unauthorized', { status: 401 });
+  }
+
+  // TTS is a paid-only feature
+  const userId = session.user.id;
+  if (!userId) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+  const userPlan = await getUserPlan(userId);
+  if (userPlan === 'free') {
+    return new Response('TTS requires a paid plan', { status: 403 });
   }
 
   const body = await req.json() as { text?: unknown; voiceId?: unknown };

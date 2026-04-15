@@ -13,8 +13,8 @@ export function getStripe(): InstanceType<typeof Stripe> {
     throw new Error('STRIPE_SECRET_KEY environment variable is not set');
   }
   if (!stripeSingleton) {
-    stripeSingleton = new (Stripe as any)(key, {
-      apiVersion: '2026-01-28.clover',
+    stripeSingleton = new Stripe(key, {
+      apiVersion: '2026-03-25.dahlia',
     }) as InstanceType<typeof Stripe>;
   }
   return stripeSingleton;

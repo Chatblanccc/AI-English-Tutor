@@ -3,6 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SessionProvider } from "next-auth/react";
+import { AuthEndpointSelfCheck } from "@/components/AuthEndpointSelfCheck";
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ??
@@ -34,7 +35,8 @@ export default function RootLayout({
         </Script>
       </head>
       <body className="min-h-full flex flex-col font-sans">
-        <SessionProvider>
+        <SessionProvider basePath="/api/auth">
+          <AuthEndpointSelfCheck basePath="/api/auth" />
           <ThemeProvider>{children}</ThemeProvider>
         </SessionProvider>
       </body>

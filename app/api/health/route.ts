@@ -1,18 +1,32 @@
 import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
-// No auth required — only checks server-side env key presence + lightweight API ping.
-// No sensitive data is returned to the client.
+// No auth required.
+// Public mode only checks env presence; deep third-party probe requires a shared token.
 
-// Server-side cache to avoid hammering the external API on every poll.
-let cached: { ok: boolean; services: { ai: boolean; tts: boolean }; at: number } | null = null;
+type HealthSnapshot = { ok: boolean; services: { ai: boolean; tts: boolean }; at: number };
+
+// Separate caches for public checks and authenticated deep checks.
+let cachedPublic: HealthSnapshot | null = null;
+let cachedDeep: HealthSnapshot | null = null;
 const CACHE_TTL_MS = 10_000;
+const DEEP_CHECK_HEADER = 'x-health-check-token';
 
-export async function GET() {
+function canRunDeepCheck(req: Request): boolean {
+  const expected = process.env.HEALTHCHECK_TOKEN;
+  if (!expected) return false;
+  const provided = req.headers.get(DEEP_CHECK_HEADER);
+  return !!provided && provided === expected;
+}
+
+export async function GET(req: Request) {
   const now = Date.now();
-  if (cached && now - cached.at < CACHE_TTL_MS) {
+  const deepCheck = canRunDeepCheck(req);
+  const cache = deepCheck ? cachedDeep : cachedPublic;
+
+  if (cache && now - cache.at < CACHE_TTL_MS) {
     return NextResponse.json(
-      { ok: cached.ok, services: cached.services },
+      { ok: cache.ok, services: cache.services },
       { headers: { 'Cache-Control': 'no-store' } },
     );
   }
@@ -20,9 +34,9 @@ export async function GET() {
   const kimiKey = process.env.KIMI_API_KEY;
   const fishKey = process.env.FISH_AUDIO_API_KEY;
 
-  // Verify Kimi/Moonshot AI API is reachable with the configured key
-  let aiOk = false;
-  if (kimiKey) {
+  // Public checks are configuration-only. Deep external probe is opt-in via secret header.
+  let aiOk = Boolean(kimiKey);
+  if (deepCheck && kimiKey) {
     try {
       const res = await fetch('https://api.moonshot.cn/v1/models', {
         method: 'GET',
@@ -39,7 +53,12 @@ export async function GET() {
   const ttsOk = Boolean(fishKey && fishKey !== 'your_fish_audio_api_key_here');
 
   const allOk = aiOk && ttsOk;
-  cached = { ok: allOk, services: { ai: aiOk, tts: ttsOk }, at: now };
+  const snapshot = { ok: allOk, services: { ai: aiOk, tts: ttsOk }, at: now };
+  if (deepCheck) {
+    cachedDeep = snapshot;
+  } else {
+    cachedPublic = snapshot;
+  }
 
   return NextResponse.json(
     { ok: allOk, services: { ai: aiOk, tts: ttsOk } },

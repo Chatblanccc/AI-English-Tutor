@@ -12,6 +12,32 @@ export interface UsageInfo {
   billing?: 'subscription' | 'prepaid' | 'free';
 }
 
+export interface RankStage {
+  tier: string;
+  division: number | null;
+  label: string;
+  icon: string;
+}
+
+export interface RankProgress {
+  xp: number;
+  streakDays: number;
+  xpPerStage: number;
+  current: RankStage;
+  next: RankStage | null;
+  xpIntoStage: number;
+  xpToNextStage: number;
+  progressPercent: number;
+}
+
+export interface MissionProgressInfo {
+  dateKey: string;
+  practicedMs: number;
+  targetMs: number;
+  progressPercent: number;
+  messageCount: number;
+}
+
 export type Persona = 'alex' | 'trump';
 
 export interface Message {

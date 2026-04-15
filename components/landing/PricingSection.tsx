@@ -96,14 +96,18 @@ export function PricingSection() {
         body: JSON.stringify({ plan: planKey }),
       });
 
-      const data = (await res.json()) as { url?: string; error?: string };
-
-      if (!res.ok || !data.url) {
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
         console.error('[checkout]', data.error ?? 'Unknown error');
         alert(data.error ?? 'Failed to start checkout. Please try again.');
         return;
       }
 
+      const data = (await res.json()) as { url?: string };
+      if (!data.url) {
+        alert('Failed to start checkout. Please try again.');
+        return;
+      }
       window.location.href = data.url;
     } catch (err) {
       console.error('[checkout] network error', err);

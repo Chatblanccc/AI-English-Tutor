@@ -89,6 +89,7 @@ export interface FinalScenarioCard {
   quality: QualityReport;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export interface AgentSpec<TIn, TOut> {
   name: string;
   description: string;
@@ -98,7 +99,7 @@ export interface AgentSpec<TIn, TOut> {
   handoffTo: string;
 }
 
-export const AGENT_PIPELINE_SPECS: readonly AgentSpec<any, any>[] = [
+export const AGENT_PIPELINE_SPECS: readonly AgentSpec<unknown, unknown>[] = [
   {
     name: 'AgentA_ScenarioPlanner',
     description: 'Create scenario brief from category, level, and business constraints.',

@@ -6,18 +6,30 @@ import { z } from 'zod';
 import {
   ensureSchema, createConversation,
   saveMessageToConversation, touchConversation,
-  getUserPlan, recordUsage, getUsageCount, getMonthlyUsageCount,
+  getUserPlan, recordUsage, getUsageCount, getMonthlyUsageCount, addUserXp,
 } from '@/lib/db';
+import { checkChatRateLimit } from '@/lib/rate-limit';
 
 const FREE_LIMIT = 100;
 const FREE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // rolling 7-day window
 const PLUS_LIMIT = 1000;
+const XP_PER_COMPLETED_ROUND = 20;
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 type S = { user?: { id?: string } | null } | null;
-function newId() { return Math.random().toString(36).substring(2, 11); }
+function newId() { return crypto.randomUUID(); }
+
+function getClientIp(req: NextRequest): string {
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return 'unknown';
+}
+
+const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+const MAX_CONV_ID_LEN = 128;
+const MAX_BODY_SIZE = 200_000; // ~200KB JSON payload
 
 // ── Tools ──────────────────────────────────────────────────────────────────────
 
@@ -139,12 +151,31 @@ export async function POST(req: NextRequest) {
     persona?: string;
   };
 
+  // ── Rate limit gate ───────────────────────────────────────────────────────
+  const clientIp = getClientIp(req);
+  const rateLimit = checkChatRateLimit(userId, clientIp);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'rate_limit', retryAfterMs: rateLimit.retryAfterMs, reason: rateLimit.reason },
+      { status: 429, headers: { 'Retry-After': String(Math.ceil(rateLimit.retryAfterMs / 1000)) } },
+    );
+  }
+
   // ── Input validation ──────────────────────────────────────────────────────
   if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
     return NextResponse.json({ error: 'messages must be a non-empty array' }, { status: 400 });
   }
   if (rawMessages.length > MAX_MESSAGES) {
     return NextResponse.json({ error: `Too many messages (max ${MAX_MESSAGES})` }, { status: 400 });
+  }
+  if (JSON.stringify(rawMessages).length > MAX_BODY_SIZE) {
+    return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
+  }
+  if (
+    conversationId &&
+    (conversationId.length > MAX_CONV_ID_LEN || !SAFE_ID_RE.test(conversationId))
+  ) {
+    return NextResponse.json({ error: 'Invalid conversationId' }, { status: 400 });
   }
 
   const persona = VALID_PERSONAS.has(rawPersona ?? '') ? (rawPersona as 'alex' | 'trump') : 'alex';
@@ -313,6 +344,9 @@ Current topic: ${topic}. Keep it relevant, opinionated, and natural.`;
       // Record one usage unit per completed round
       try { await recordUsage(userId); } catch (e) {
         console.error('[chat] recordUsage:', String(e));
+      }
+      try { await addUserXp(userId, XP_PER_COMPLETED_ROUND); } catch (e) {
+        console.error('[chat] addUserXp:', String(e));
       }
       if (userId && conversationId && text.trim()) {
         try {

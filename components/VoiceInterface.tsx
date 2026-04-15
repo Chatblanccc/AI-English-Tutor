@@ -7,6 +7,7 @@ import { useSpeechToText } from '@/hooks/useSpeechToText';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useThemeStore } from '@/store/useThemeStore';
 import { useSession, signOut } from 'next-auth/react';
+import Link from 'next/link';
 import { AvatarScene } from '@/components/AvatarScene';
 import { AvatarCharacter } from '@/components/AvatarCharacter';
 import { TrumpAvatarCharacter } from '@/components/TrumpAvatarCharacter';
@@ -16,9 +17,10 @@ import {
   Mic, MicOff, Square, RotateCcw, Volume2, MessageSquare,
   Send, Keyboard, LogOut, Plus, Trash2, Menu, X, PanelLeftClose, PanelLeftOpen,
   BookOpen, CheckCircle, Zap, Users, ChevronDown, Loader2,
+  Clock, Target, ArrowRight, RefreshCw,
 } from 'lucide-react';
 
-import type { Conversation, Persona, UsageInfo } from '@/types';
+import type { Conversation, MissionProgressInfo, Persona, RankProgress, UsageInfo } from '@/types';
 import { PAID_PLANS_LIVE } from '@/lib/product-flags';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, UIMessage, generateId } from 'ai';
@@ -779,6 +781,7 @@ const UserMenu = ({ collapsed = false }: { collapsed?: boolean }) => {
     return (
       <div className="flex flex-col items-center gap-2">
         <div className="relative">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={session.user.image ?? ''} alt={session.user.name ?? ''} referrerPolicy="no-referrer"
             title={`${session.user.name} · ${badge.label}`}
             className="w-7 h-7 rounded-full object-cover border cursor-pointer"
@@ -798,6 +801,7 @@ const UserMenu = ({ collapsed = false }: { collapsed?: boolean }) => {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: theme.bgCard }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={session.user.image ?? ''} alt="" referrerPolicy="no-referrer"
           className="w-7 h-7 rounded-full object-cover flex-shrink-0 border"
           style={{ borderColor: theme.bgCardBorder ?? 'transparent' }}
@@ -839,7 +843,7 @@ const UserMenu = ({ collapsed = false }: { collapsed?: boolean }) => {
             {portalLoading ? 'Opening…' : 'Manage subscription'}
           </button>
         ) : (
-          <a
+          <Link
             href="/#pricing"
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer"
             style={{ background: 'rgba(201,100,66,.10)', color: '#c96442', border: '1px solid rgba(201,100,66,.20)' }}
@@ -847,7 +851,7 @@ const UserMenu = ({ collapsed = false }: { collapsed?: boolean }) => {
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(201,100,66,.10)'; }}>
             <Zap size={11} />
             Upgrade to Plus
-          </a>
+          </Link>
         )
       ) : null}
     </div>
@@ -922,7 +926,7 @@ export const VoiceInterface = () => {
   } = useChatStore();
   const { isListening, transcript, error: speechError, startListening, setTranscript } = useSpeechToText();
   const { speak, stop, unlock, isSpeaking, beginUtterance, enqueueSegment, endUtterance, prefetchReplayAudio } = useTextToSpeech();
-  const { theme, toggleTheme, mode } = useThemeStore();
+  const { theme, mode } = useThemeStore();
   const { data: session } = useSession();
   const userId = getUserId(session);
 
@@ -978,6 +982,8 @@ export const VoiceInterface = () => {
 
   // ── Usage quota ───────────────────────────────────────────────────────────
   const [usage, setUsage] = useState<UsageInfo | null>(null);
+  const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
+  const [missionRuntimeProgress, setMissionRuntimeProgress] = useState<MissionProgressInfo | null>(null);
   const [limitReached, setLimitReached] = useState(false);
 
   // ── API health status ─────────────────────────────────────────────────────
@@ -1084,15 +1090,46 @@ export const VoiceInterface = () => {
   // ── Fetch usage from /api/usage ────────────────────────────────────────────
   const fetchUsage = useCallback(async () => {
     try {
-      const res = await fetch('/api/usage', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data: UsageInfo = await res.json();
-      setUsage(data);
-      setLimitReached(data.window !== 'unlimited' && data.used >= data.limit);
+      const [usageRes, progressRes] = await Promise.all([
+        fetch('/api/usage', { cache: 'no-store' }),
+        fetch('/api/progress', { cache: 'no-store' }),
+      ]);
+      if (usageRes.ok) {
+        const usageData: UsageInfo = await usageRes.json();
+        setUsage(usageData);
+        setLimitReached(usageData.window !== 'unlimited' && usageData.used >= usageData.limit);
+      }
+      if (progressRes.ok) {
+        const rankData: RankProgress = await progressRes.json();
+        setRankProgress(rankData);
+      }
     } catch {
       // non-fatal
     }
   }, []);
+
+  const fetchMissionProgress = useCallback(async (conversationId?: string | null) => {
+    try {
+      const qs = conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : '';
+      const res = await fetch(`/api/mission-progress${qs}`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const missionData: MissionProgressInfo = await res.json();
+      setMissionRuntimeProgress(missionData);
+    } catch {
+      // non-fatal
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    fetchMissionProgress(currentConversationId);
+  }, [currentConversationId, fetchMissionProgress, userId]);
+
+  // ── Persona availability (free users only get browser-TTS personas) ─────────
+  const availablePersonas = useMemo<Persona[]>(
+    () => (usage?.plan === 'free' ? ['alex'] : (Object.keys(PERSONA_META) as Persona[])),
+    [usage],
+  );
 
   // ── Auto-scroll ────────────────────────────────────────────────────────────
   const desktopMsgRef = useRef<HTMLDivElement>(null);
@@ -1185,6 +1222,7 @@ export const VoiceInterface = () => {
       if (currentConvIdRef.current) touchConvStore(currentConvIdRef.current);
       // Refresh usage counter after each completed round
       fetchUsage();
+      fetchMissionProgress(currentConvIdRef.current);
     }
     prevStatus.current = status;
   }, [
@@ -1194,6 +1232,7 @@ export const VoiceInterface = () => {
     activeVoiceId,
     touchConvStore,
     fetchUsage,
+    fetchMissionProgress,
     beginUtterance,
     enqueueSegment,
     flushSegmentedTtsBuffer,
@@ -1248,8 +1287,10 @@ export const VoiceInterface = () => {
         // Load messages for the latest conversation
         const msgRes = await fetch(`/api/conversations/${latest.id}/messages`);
         if (cancelled) return;
-        const msgs = await msgRes.json();
-        if (Array.isArray(msgs)) setMessages(msgs.map(toUIMessage));
+        if (msgRes.ok) {
+          const msgs = await msgRes.json();
+          if (Array.isArray(msgs)) setMessages(msgs.map(toUIMessage));
+        }
         setHasLoadedConversations(true);
       } catch (e) {
         console.error('[load] conversations:', e);
@@ -1371,15 +1412,23 @@ export const VoiceInterface = () => {
     setCurrentConversationId(conv.id);
     currentConvIdRef.current = conv.id;
     currentConvTitleRef.current = conv.title;
-    if (conv.persona && conv.persona !== selectedPersona) {
+    if (
+      conv.persona &&
+      conv.persona !== selectedPersona &&
+      availablePersonas.includes(conv.persona)
+    ) {
       setPersona(conv.persona);
     }
     try {
       const res = await fetch(`/api/conversations/${conv.id}/messages`);
-      const msgs = await res.json();
-      setMessages(Array.isArray(msgs) ? msgs.map(toUIMessage) : []);
+      if (res.ok) {
+        const msgs = await res.json();
+        setMessages(Array.isArray(msgs) ? msgs.map(toUIMessage) : []);
+      } else {
+        setMessages([]);
+      }
     } catch { setMessages([]); }
-  }, [selectedPersona, setCurrentConversationId, setMessages, setPersona]);
+  }, [availablePersonas, selectedPersona, setCurrentConversationId, setMessages, setPersona]);
 
   // ── New chat ──────────────────────────────────────────────────────────────
   const handleNewChat = useCallback(() => {
@@ -1493,6 +1542,16 @@ export const VoiceInterface = () => {
     resetSegmentedTtsState();
     stop();
   }, [resetSegmentedTtsState, selectedPersona, setPersona, setCurrentConversationId, setMessages, stop]);
+
+  // Auto-switch free users away from paid personas (e.g. trump voice)
+  useEffect(() => {
+    if (!usage) return;
+    if (!availablePersonas.includes(selectedPersona)) {
+      // Keep current conversation visible; only downgrade speaking persona.
+      setPersona('alex');
+      setShowPersonaSwitcher(false);
+    }
+  }, [usage, availablePersonas, selectedPersona, setPersona]);
 
   useEffect(() => {
     if (!replayingMessageId) return;
@@ -1721,7 +1780,7 @@ export const VoiceInterface = () => {
             <p style={{ color: theme.textMuted }}>
               You&apos;ve used all {usage.limit} free rounds this week.
               {resetLabel ? ` Resets${resetLabel}.` : ''}{' '}
-              <a href="/#pricing" style={{ color: '#d97757', textDecoration: 'underline' }}>Pricing</a>
+              <Link href="/#pricing" style={{ color: '#d97757', textDecoration: 'underline' }}>Pricing</Link>
               {' '}— paid upgrades are temporarily unavailable.
             </p>
           </>
@@ -1783,120 +1842,266 @@ export const VoiceInterface = () => {
     prefetchReplayAudio(text, activeVoiceId);
   }, [displayMessages, activeVoiceId, prefetchReplayAudio]);
 
-  const renderPlanEntryCard = (mobile = false) => {
+  const renderPlanEntryCard = (mobile = false, stageMode = false) => {
     const hasAnyPlanContent = !!todayPlan || !!todayMainScenario || homeRecommendedScenarios.length > 0;
     if (!hasAnyPlanContent) return null;
 
-    const focusItems = (todayPlan?.focusCorrections ?? []).slice(0, 2);
-    const extraFocusCount = Math.max(0, (todayPlan?.focusCorrections?.length ?? 0) - focusItems.length);
+    const focusItems = (todayPlan?.focusCorrections ?? []).slice(0, 3);
     const isStartDisabled = !activeHomeScenarioId || !!scenarioLaunchingId || isLoading || limitReached;
     const isSwapDisabled = homeRecommendedScenarios.length === 0 || !!scenarioLaunchingId || isLoading || limitReached;
     const startLabel = scenarioLaunchingId === activeHomeScenarioId ? 'Launching...' : 'Start this scenario';
 
-    return (
-      <div
-        className={`w-full rounded-2xl border text-left ${mobile ? 'p-3' : 'p-4'}`}
-        style={{ background: theme.bgCard, borderColor: theme.bgCardBorder }}
-      >
-        <p className={`${mobile ? 'text-[11px]' : 'text-xs'} font-semibold`} style={{ color: theme.accentText }}>
-          {todayPlan ? "Today's plan" : 'Recommended practice'}
-        </p>
-        {todayPlan?.goal ? (
-          <p className={`${mobile ? 'text-xs' : 'text-sm'} font-medium mt-1`} style={{ color: theme.textPrimary }}>
-            {todayPlan.goal}
-          </p>
-        ) : null}
-        {todayMainScenario ? (
-          <p className={`${mobile ? 'text-[10px]' : 'text-xs'} mt-1.5`} style={{ color: theme.textMuted }}>
-            Main scenario: {todayMainScenario.titleEn} ({todayMainScenario.titleZh})
-          </p>
-        ) : null}
-        {activeHomeScenario && todayMainScenario && activeHomeScenario.scenarioId !== todayMainScenario.scenarioId ? (
-          <p className={`${mobile ? 'text-[10px]' : 'text-xs'} mt-1`} style={{ color: theme.accentPale }}>
-            Selected: {activeHomeScenario.titleEn} ({activeHomeScenario.titleZh})
-          </p>
-        ) : null}
-        {todayPlan ? (
-          <p className={`${mobile ? 'text-[10px]' : 'text-xs'} mt-1`} style={{ color: theme.textDimmer }}>
-            Suggested duration: {todayPlan.suggestedDurationMin} min
-          </p>
-        ) : null}
-        {focusItems.length ? (
-          <p className={`${mobile ? 'text-[10px]' : 'text-xs'} mt-1`} style={{ color: theme.textDimmer }}>
-            Focus: {focusItems.join(' / ')}{extraFocusCount > 0 ? ` +${extraFocusCount}` : ''}
-          </p>
-        ) : null}
+    const stepLabel = mobile ? 'text-[10px]' : 'text-[11px]';
+    const titleSize = mobile ? 'text-sm' : 'text-base';
+    const bodySize = mobile ? 'text-[11px]' : 'text-xs';
+    const questMainReady = !!todayMainScenario;
+    const questFocusReady = focusItems.length > 0;
+    const questBonusReady = homeRecommendedScenarios.length > 0;
+    const completedQuestCount = [questMainReady, questFocusReady, questBonusReady].filter(Boolean).length;
+    const questEstimatedProgress = Math.round((completedQuestCount / 3) * 100);
+    const missionProgress = missionRuntimeProgress?.progressPercent ?? questEstimatedProgress;
+    const earnedXp = completedQuestCount * 20;
+    const questStreakDays = Math.min(7, Math.max(1, completedQuestCount + (todayPlan ? 1 : 0)));
+    const effectiveStreakDays = rankProgress?.streakDays ?? questStreakDays;
+    const levelCurrentXp = rankProgress?.xp ?? (120 + earnedXp);
+    const levelTargetXp = rankProgress ? (rankProgress.xp + rankProgress.xpToNextStage) : 200;
+    const levelProgress = rankProgress?.progressPercent ?? 0;
+    const currentRank = rankProgress?.current ?? { icon: '🛡️', label: '黑铁 4' };
+    const nextRank = rankProgress?.next ?? null;
+    const reachedTopRank = !nextRank;
 
-        {homeRecommendedScenarios.length > 0 ? (
-          <div className="mt-3">
-            <p className={`${mobile ? 'text-[11px]' : 'text-xs'} font-semibold mb-2`} style={{ color: theme.textMuted }}>
-              Recommended scenarios
+    return (
+      <section
+        className={`w-full rounded-2xl border text-left ${mobile ? 'p-3' : 'p-3.5'} ${stageMode && !mobile ? 'min-h-[clamp(300px,42vh,460px)]' : ''}`}
+        style={{
+          background: theme.bgCard,
+          borderColor: theme.bgCardBorder,
+          boxShadow: theme.mode === 'dark' ? '0 4px 24px rgba(0,0,0,.2)' : '0 4px 24px rgba(0,0,0,.06)',
+        }}
+      >
+        <div className="flex items-center justify-between gap-2 mb-2.5">
+          <div className="flex items-center gap-2">
+            <Target size={mobile ? 14 : 16} style={{ color: '#c96442' }} />
+            <p className={`${stepLabel} font-semibold uppercase tracking-wide`} style={{ color: theme.accentText }}>
+              Mission Control
             </p>
-            <div className={`grid gap-2 ${mobile ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
-              {homeRecommendedScenarios.map(s => {
-                const isSelected = activeHomeScenarioId === s.scenarioId;
-                return (
-                  <button
-                    key={s.scenarioId}
-                    onClick={() => {
-                      if (isSelected) {
-                        if (defaultHomeScenarioId) setSelectedScenarioId(defaultHomeScenarioId);
-                      } else {
-                        setSelectedScenarioId(s.scenarioId);
-                      }
-                    }}
-                    disabled={!!scenarioLaunchingId || isLoading || limitReached}
-                    className="rounded-xl border text-left cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed p-2.5"
+          </div>
+          <div className="flex items-center gap-1.5" style={{ color: theme.textMuted }}>
+            <Clock size={mobile ? 11 : 13} />
+            <span className={stepLabel}>
+              {todayPlan?.suggestedDurationMin ? `${todayPlan.suggestedDurationMin} min` : 'Flexible'}
+            </span>
+          </div>
+        </div>
+
+        <div className={`grid gap-3 ${mobile ? 'grid-cols-1' : 'grid-cols-12'} ${stageMode && !mobile ? 'items-stretch' : ''}`}>
+          <div className={`${mobile ? '' : 'col-span-4'} rounded-xl border p-3 ${stageMode && !mobile ? 'flex flex-col' : ''}`} style={{ borderColor: theme.bgInputBorder, background: theme.bgInput }}>
+            <p className={`${stepLabel} font-semibold uppercase tracking-wide mb-2`} style={{ color: theme.textMuted }}>Quest Track</p>
+            <div className={`space-y-2.5 ${stageMode && !mobile ? 'flex-1' : ''}`}>
+              {[
+                { title: 'Main Quest', text: todayMainScenario?.titleEn ?? 'Select your primary scenario', done: questMainReady, reward: '+20 XP' },
+                { title: 'Side Quest', text: focusItems.length ? focusItems.join(' · ') : 'Get focus corrections ready', done: questFocusReady, reward: '+20 XP' },
+                { title: 'Bonus Quest', text: homeRecommendedScenarios[0]?.titleEn ?? 'Unlock a recommended scenario', done: questBonusReady, reward: '+20 XP' },
+              ].map((quest, idx) => (
+                <div key={quest.title} className="flex items-start gap-2.5">
+                  <div
+                    className="w-5 h-5 rounded-full border flex items-center justify-center mt-0.5 flex-shrink-0"
                     style={{
-                      background: isSelected ? theme.bgCard : theme.bgInput,
-                      borderColor: isSelected ? '#c96442' : theme.bgInputBorder,
+                      borderColor: quest.done ? '#c96442' : theme.bgInputBorder,
+                      background: quest.done ? 'rgba(201,100,66,.15)' : 'transparent',
+                      color: quest.done ? '#c96442' : theme.textDimmer,
                     }}
                   >
-                    <p className="text-xs font-semibold" style={{ color: theme.textPrimary }}>
-                      {s.titleEn}
-                    </p>
-                    <p className="text-[10px] mt-0.5" style={{ color: theme.textDimmer }}>
-                      {s.titleZh}
-                    </p>
-                    {isSelected ? (
-                      <p className="text-[10px] mt-1" style={{ color: '#c96442' }}>
-                        Selected
-                      </p>
-                    ) : null}
-                  </button>
-                );
-              })}
+                    {quest.done ? <CheckCircle size={12} /> : <span className="text-[10px] font-semibold">{idx + 1}</span>}
+                  </div>
+                  <div className="min-w-0">
+                    <p className={`${bodySize} font-semibold`} style={{ color: theme.textPrimary }}>{quest.title}</p>
+                    <p className={`${bodySize} truncate`} style={{ color: theme.textMuted }}>{quest.text}</p>
+                    <p className="text-[10px]" style={{ color: theme.accentPale }}>{quest.reward}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
-        ) : null}
 
-        <div className={`mt-3 flex gap-2 ${mobile ? 'flex-col' : 'items-center'}`}>
-          <button
-            onClick={handleStartSelectedScenario}
-            disabled={isStartDisabled}
-            className={`${mobile ? 'w-full text-[11px]' : 'text-xs'} px-3 py-1.5 rounded-lg font-medium cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
-            style={{ background: '#c96442', color: '#fff' }}
-          >
-            {startLabel}
-          </button>
-          <button
-            onClick={handleSwapScenario}
-            disabled={isSwapDisabled}
-            className={`${mobile ? 'w-full text-[11px]' : 'text-xs'} px-3 py-1.5 rounded-lg font-medium border cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
-            style={{ background: theme.bgInput, color: theme.textMuted, borderColor: theme.bgInputBorder }}
-          >
-            Swap scenario
-          </button>
-          <button
-            onClick={() => setShowScenarioPicker(true)}
-            disabled={!!scenarioLaunchingId || isLoading || limitReached}
-            className={`${mobile ? 'w-full text-[11px]' : 'text-xs ml-auto'} px-3 py-1.5 rounded-lg font-medium border cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5`}
-            style={{ background: theme.bgInput, color: theme.textMuted, borderColor: theme.bgInputBorder }}
-          >
-            <BookOpen size={12} /> More scenarios
-          </button>
+          <div className={`${mobile ? '' : 'col-span-5'} rounded-xl border p-3 ${stageMode && !mobile ? 'flex flex-col' : ''}`} style={{ borderColor: theme.bgInputBorder }}>
+            <p className={`${stepLabel} font-semibold uppercase tracking-wide`} style={{ color: theme.textMuted }}>Current Mission</p>
+            <h3 className={`${titleSize} font-semibold mt-1 leading-snug`} style={{ color: theme.textPrimary }}>
+              {todayPlan?.goal ?? 'Build confidence through one focused speaking mission.'}
+            </h3>
+            {todayMainScenario ? (
+              <div className="mt-2.5">
+                <p className={`${bodySize} font-semibold`} style={{ color: theme.textPrimary }}>
+                  Mission: {todayMainScenario.titleEn}
+                </p>
+                <p className="text-[10px]" style={{ color: theme.textDimmer }}>{todayMainScenario.titleZh}</p>
+                {todayMainScenario.objective ? (
+                  <p className={`${bodySize} mt-1.5`} style={{ color: theme.textMuted }}>{todayMainScenario.objective}</p>
+                ) : null}
+              </div>
+            ) : null}
+            <div className={`mt-3 ${stageMode && !mobile ? 'mt-auto pt-2' : ''}`}>
+              <div className="flex items-center justify-between mb-1">
+                <p className={stepLabel} style={{ color: theme.textMuted }}>
+                  Mission progress
+                  {missionRuntimeProgress
+                    ? ` (${Math.max(1, Math.round(missionRuntimeProgress.practicedMs / 60000))}/${Math.max(1, Math.round(missionRuntimeProgress.targetMs / 60000))} min)`
+                    : ''}
+                </p>
+                <p className={stepLabel} style={{ color: theme.accentText }}>{missionProgress}%</p>
+              </div>
+              <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: theme.mode === 'dark' ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.07)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${missionProgress}%`,
+                    background: 'linear-gradient(90deg,#c96442,#e37f5d)',
+                  }}
+                />
+              </div>
+            </div>
+            {activeHomeScenario && todayMainScenario && activeHomeScenario.scenarioId !== todayMainScenario.scenarioId ? (
+              <div className="mt-2.5 flex items-center gap-1.5">
+                <Zap size={mobile ? 10 : 12} style={{ color: theme.accentPale }} />
+                <p className={bodySize} style={{ color: theme.accentPale }}>
+                  Active loadout: {activeHomeScenario.titleEn}
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className={`${mobile ? '' : 'col-span-3'} rounded-xl border p-3 ${stageMode && !mobile ? 'flex flex-col' : ''}`} style={{ borderColor: theme.bgInputBorder, background: theme.bgInput }}>
+            <p className={`${stepLabel} font-semibold uppercase tracking-wide`} style={{ color: theme.textMuted }}>Action & Rewards</p>
+            <div className="mt-2.5 space-y-2">
+              <button
+                onClick={handleStartSelectedScenario}
+                disabled={isStartDisabled}
+                className={`${mobile ? 'w-full text-[11px]' : 'w-full text-xs'} px-3 py-2 rounded-lg font-semibold cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 transition-all`}
+                style={{
+                  background: 'linear-gradient(135deg, #c96442, #b8573a)',
+                  color: '#fff',
+                  boxShadow: '0 4px 14px rgba(201,100,66,.35)',
+                }}
+              >
+                {startLabel}
+                <ArrowRight size={mobile ? 12 : 14} />
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleSwapScenario}
+                  disabled={isSwapDisabled}
+                  className={`${mobile ? 'text-[11px]' : 'text-xs'} px-2.5 py-2 rounded-lg font-medium border cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1 transition-all`}
+                  style={{ background: theme.bgCard, color: theme.textMuted, borderColor: theme.bgInputBorder }}
+                >
+                  <RefreshCw size={mobile ? 12 : 14} />
+                  Reroll
+                </button>
+                <button
+                  onClick={() => setShowScenarioPicker(true)}
+                  disabled={!!scenarioLaunchingId || isLoading || limitReached}
+                  className={`${mobile ? 'text-[11px]' : 'text-xs'} px-2.5 py-2 rounded-lg font-medium border cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1 transition-all`}
+                  style={{ background: theme.bgCard, color: theme.textMuted, borderColor: theme.bgInputBorder }}
+                >
+                  <BookOpen size={mobile ? 12 : 14} />
+                  Loadout
+                </button>
+              </div>
+            </div>
+            <div className={`rounded-lg border p-2.5 ${stageMode && !mobile ? 'mt-4' : 'mt-3.5'}`} style={{ borderColor: theme.bgInputBorder, background: theme.bgCard }}>
+              <p className={stepLabel} style={{ color: theme.textMuted }}>Reward preview</p>
+              <p className={`${bodySize} font-semibold mt-1`} style={{ color: theme.textPrimary }}>+{earnedXp} XP</p>
+              <p className={`${bodySize} mt-0.5`} style={{ color: theme.textMuted }}>Fluency boost +{Math.max(1, completedQuestCount)}</p>
+              <p className={`${bodySize} mt-0.5`} style={{ color: theme.accentPale }}>Streak x{effectiveStreakDays}</p>
+            </div>
+            {homeRecommendedScenarios.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {homeRecommendedScenarios.slice(0, mobile ? 2 : 3).map((s) => {
+                  const isSelected = activeHomeScenarioId === s.scenarioId;
+                  return (
+                    <button
+                      key={s.scenarioId}
+                      onClick={() => {
+                        if (isSelected) {
+                          if (defaultHomeScenarioId) {
+                            setSelectedScenarioId(defaultHomeScenarioId);
+                          } else {
+                            setSelectedScenarioId(null);
+                          }
+                        } else {
+                          setSelectedScenarioId(s.scenarioId);
+                        }
+                      }}
+                      disabled={!!scenarioLaunchingId || isLoading || limitReached}
+                      className={`${bodySize} px-2 py-1 rounded-full border transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
+                      style={{
+                        background: isSelected ? 'rgba(201,100,66,.12)' : theme.bgCard,
+                        borderColor: isSelected ? '#c96442' : theme.bgInputBorder,
+                        color: isSelected ? '#c96442' : theme.textMuted,
+                      }}
+                      title={`${s.titleEn} (${s.titleZh})`}
+                    >
+                      {s.titleEn}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
         </div>
-      </div>
+
+        <div
+          className={`mt-2.5 rounded-xl border ${mobile ? 'px-3 py-2' : 'px-3.5 py-2.5'}`}
+          style={{
+            borderColor: theme.bgInputBorder,
+            background: theme.mode === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.01)',
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Zap size={mobile ? 12 : 14} style={{ color: '#c96442' }} />
+              <p className={`${stepLabel} font-semibold uppercase tracking-wide`} style={{ color: theme.textMuted }}>
+                XP Progress
+              </p>
+            </div>
+            <p className={stepLabel} style={{ color: theme.textMuted }}>
+              Level progress {levelCurrentXp}/{levelTargetXp}
+            </p>
+          </div>
+
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            <p className={bodySize} style={{ color: theme.textPrimary }}>
+              Current rank: <span style={{ color: theme.accentText }}>{currentRank.icon} {currentRank.label}</span>
+            </p>
+            <p className={bodySize} style={{ color: theme.textMuted }}>
+              {reachedTopRank ? 'Max rank reached' : `Next: ${nextRank?.icon} ${nextRank?.label}`}
+            </p>
+          </div>
+
+          <div className="mt-1.5">
+            <div
+              className="w-full h-2.5 rounded-full overflow-hidden"
+              style={{ background: theme.mode === 'dark' ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.08)' }}
+            >
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${levelProgress}%`,
+                  background: 'linear-gradient(90deg,#c96442,#e37f5d)',
+                  boxShadow: '0 0 10px rgba(201,100,66,.28)',
+                }}
+              />
+            </div>
+            <div className="mt-1 flex items-center justify-between">
+              <p className={bodySize} style={{ color: theme.textMuted }}>
+                +{earnedXp} XP from today&apos;s quests
+              </p>
+              <p className={bodySize} style={{ color: theme.accentPale }}>
+                {reachedTopRank ? 'Next unlock: Legendary title' : `Next unlock: ${nextRank?.icon} ${nextRank?.label}`}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
     );
   };
 
@@ -2216,7 +2421,7 @@ export const VoiceInterface = () => {
                 {showPersonaSwitcher && (
                   <div data-persona-switcher="true" className="absolute right-0 top-full mt-1.5 z-50 flex gap-2 p-2 rounded-2xl border shadow-xl"
                     style={{ background: theme.bgSidebar, borderColor: theme.bgSidebarBorder, animation: 'fadeUp .2s ease-out' }}>
-                    {(['alex', 'trump'] as Persona[]).map(p => (
+                    {availablePersonas.map(p => (
                       <button key={p} onClick={() => handlePersonaSwitch(p)}
                         className="flex flex-col items-center gap-1.5 px-3 py-2 rounded-xl border transition-all cursor-pointer"
                         style={{
@@ -2282,7 +2487,7 @@ export const VoiceInterface = () => {
                       animation: 'fadeUp .2s ease-out',
                       backdropFilter: 'blur(12px)',
                     }}>
-                    {(['alex', 'trump'] as Persona[]).map(p => (
+                    {availablePersonas.map(p => (
                       <button key={p} onClick={() => handlePersonaSwitch(p)}
                         className="flex flex-col items-center gap-1.5 px-3 py-2 rounded-xl border transition-all cursor-pointer"
                         style={{
@@ -2325,9 +2530,9 @@ export const VoiceInterface = () => {
           <div ref={desktopMsgRef} className="flex-1 overflow-y-auto px-6 py-5 space-y-4"
             style={{ scrollbarWidth: 'thin', scrollbarColor: `${theme.scrollbarColor} transparent` }}>
             {displayMessages.length === 0 ? (
-              <div className="min-h-full flex items-center justify-center py-6">
-                <section className="w-full max-w-3xl flex flex-col gap-3">
-                  {renderPlanEntryCard(false)}
+          <div className="min-h-full flex items-stretch justify-stretch py-0">
+                <section className="w-full flex flex-col gap-3">
+                  {renderPlanEntryCard(false, true)}
                 </section>
               </div>
             ) : displayMessages.map(m => (
@@ -2414,6 +2619,7 @@ export const VoiceInterface = () => {
           <div className="flex items-center gap-2">
             <ThemeToggle />
             {session?.user && (
+              // eslint-disable-next-line @next/next/no-img-element
               <img src={session.user.image ?? ''} alt="" referrerPolicy="no-referrer"
                 className="w-8 h-8 rounded-full object-cover border cursor-pointer"
                 style={{ borderColor: 'rgba(201,100,66,.30)' }}
@@ -2486,7 +2692,7 @@ export const VoiceInterface = () => {
         {showPersonaSwitcher && (
           <div data-persona-switcher="true" className="relative z-20 flex justify-center gap-3 px-4 pt-2 pb-1"
             style={{ animation: 'fadeUp .2s ease-out' }}>
-            {(['alex', 'trump'] as Persona[]).map(p => (
+            {availablePersonas.map(p => (
               <button key={p} onClick={() => handlePersonaSwitch(p)}
                 className="flex items-center gap-2 px-3 py-2 rounded-xl border transition-all cursor-pointer"
                 style={{
@@ -2513,7 +2719,7 @@ export const VoiceInterface = () => {
                 <p className="text-[11px]" style={{ color: theme.textMuted }}>Tap a character to select</p>
               </div>
               <div className="flex gap-3 w-full justify-center">
-                {(['alex', 'trump'] as Persona[]).map(p => (
+                {availablePersonas.map(p => (
                   <PersonaCard key={p} persona={p} selected={selectedPersona === p} onSelect={() => setPersona(p)} />
                 ))}
               </div>

@@ -9,6 +9,7 @@ export default auth((req) => {
   // and Stripe webhooks (verified by signature inside the route, not session cookies).
   if (
     nextUrl.pathname === '/' ||
+    nextUrl.pathname.startsWith('/auth') ||
     nextUrl.pathname.startsWith('/api/auth') ||
     nextUrl.pathname.startsWith('/sign-in') ||
     nextUrl.pathname === '/api/health' ||

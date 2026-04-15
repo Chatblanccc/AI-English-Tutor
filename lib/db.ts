@@ -129,6 +129,18 @@ export async function ensureSchema() {
 
   try { await sql`CREATE INDEX IF NOT EXISTS daily_plans_user_idx ON user_daily_plans(user_id, created_at DESC)`; } catch {}
 
+  // ── User XP / rank progression ───────────────────────────────────────────
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS user_progress (
+        user_id      TEXT PRIMARY KEY,
+        xp           INT NOT NULL DEFAULT 0,
+        streak_days  INT NOT NULL DEFAULT 1,
+        updated_at   TIMESTAMPTZ DEFAULT NOW()
+      )
+    `;
+  } catch (e) { console.error('[schema] user_progress table:', String(e)); }
+
   schemaReady = true;
 }
 
@@ -594,6 +606,111 @@ export async function getRecentDailyMainScenarioIds(userId: string, limit = 3): 
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
   } catch (e) {
     console.error('[db] getRecentDailyMainScenarioIds:', String(e));
+    return [];
+  }
+}
+
+// ── User progression helpers ────────────────────────────────────────────────
+
+export interface UserProgressRow {
+  xp: number;
+  streakDays: number;
+}
+
+export async function getUserProgress(userId: string): Promise<UserProgressRow> {
+  const sql = getDb();
+  try {
+    await sql`
+      INSERT INTO user_progress (user_id, xp, streak_days)
+      VALUES (${userId}, 0, 1)
+      ON CONFLICT (user_id) DO NOTHING
+    `;
+    const rows = await sql`
+      SELECT xp, streak_days
+      FROM user_progress
+      WHERE user_id = ${userId}
+      LIMIT 1
+    `;
+    return {
+      xp: Number(rows[0]?.xp ?? 0),
+      streakDays: Math.max(1, Number(rows[0]?.streak_days ?? 1)),
+    };
+  } catch (e) {
+    console.error('[db] getUserProgress:', String(e));
+    return { xp: 0, streakDays: 1 };
+  }
+}
+
+export async function addUserXp(userId: string, delta: number): Promise<UserProgressRow> {
+  const sql = getDb();
+  const safeDelta = Math.floor(delta);
+  try {
+    const rows = await sql`
+      INSERT INTO user_progress (user_id, xp, streak_days)
+      VALUES (${userId}, ${Math.max(0, safeDelta)}, 1)
+      ON CONFLICT (user_id) DO UPDATE SET
+        xp = GREATEST(0, user_progress.xp + ${safeDelta}),
+        updated_at = NOW()
+      RETURNING xp, streak_days
+    `;
+    return {
+      xp: Number(rows[0]?.xp ?? 0),
+      streakDays: Math.max(1, Number(rows[0]?.streak_days ?? 1)),
+    };
+  } catch (e) {
+    console.error('[db] addUserXp:', String(e));
+    return getUserProgress(userId);
+  }
+}
+
+export interface UserPracticeMessage {
+  timestamp: number;
+  content: string;
+}
+
+export async function listUserPracticeMessagesSince(userId: string, sinceMs: number): Promise<UserPracticeMessage[]> {
+  const sql = getDb();
+  try {
+    const rows = await sql`
+      SELECT timestamp, content
+      FROM messages
+      WHERE user_id = ${userId}
+        AND role = 'user'
+        AND timestamp >= ${sinceMs}
+      ORDER BY timestamp ASC
+    `;
+    return rows.map((r) => ({
+      timestamp: Number(r.timestamp),
+      content: String(r.content ?? ''),
+    }));
+  } catch (e) {
+    console.error('[db] listUserPracticeMessagesSince:', String(e));
+    return [];
+  }
+}
+
+export async function listConversationPracticeMessagesSince(
+  userId: string,
+  conversationId: string,
+  sinceMs: number,
+): Promise<UserPracticeMessage[]> {
+  const sql = getDb();
+  try {
+    const rows = await sql`
+      SELECT timestamp, content
+      FROM messages
+      WHERE user_id = ${userId}
+        AND role = 'user'
+        AND conversation_id = ${conversationId}
+        AND timestamp >= ${sinceMs}
+      ORDER BY timestamp ASC
+    `;
+    return rows.map((r) => ({
+      timestamp: Number(r.timestamp),
+      content: String(r.content ?? ''),
+    }));
+  } catch (e) {
+    console.error('[db] listConversationPracticeMessagesSince:', String(e));
     return [];
   }
 }
