@@ -1,7 +1,7 @@
 import NextAuth from 'next-auth';
 import Google from 'next-auth/providers/google';
 import type { Provider } from 'next-auth/providers';
-import { ensureSchema, upsertPublicProfile, upsertUserPlan } from '@/lib/db';
+import { ensureSchema, getUserPlan, upsertPublicProfile } from '@/lib/db';
 
 // ─── WeChat provider (custom) ─────────────────────────────────────────────────
 // Activated only when WECHAT_CLIENT_ID and WECHAT_CLIENT_SECRET are set.
@@ -98,14 +98,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       try {
         await ensureSchema();
-        await upsertUserPlan({ userId, plan: 'free' });
+        // Ensure the user has a plan row without clobbering existing paid plans.
+        await getUserPlan(userId);
         const candidateName =
           user?.name?.trim() ||
           user?.email?.split('@')[0]?.trim() ||
           userId.slice(0, 10);
         await upsertPublicProfile(userId, candidateName);
       } catch (e) {
-        console.error('[auth] initialize free plan on sign-in:', String(e));
+        console.error('[auth] initialize plan/profile on sign-in:', String(e));
       }
 
       return true;
