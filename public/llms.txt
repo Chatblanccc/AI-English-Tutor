@@ -1,0 +1,55 @@
+# AURAE VOICE
+
+> AURAE VOICE is an AI-powered English conversation coach that helps learners practice real spoken English through two-way voice conversations. The platform provides real-time grammar feedback, pronunciation coaching, and adaptive difficulty — all delivered via a browser-based voice interface with no app download required.
+
+## What AURAE VOICE does
+
+AURAE VOICE lets users speak directly with an AI tutor that listens, responds naturally, and corrects mistakes in real time. Sessions cover practical scenarios including job interviews, ordering food, travel situations, business meetings, and social conversations. The system adjusts difficulty automatically based on the learner's proficiency level.
+
+Key capabilities:
+- Real-time AI voice conversation with natural turn-taking
+- Instant grammar and pronunciation feedback after each response
+- 40+ practice scenarios across business, travel, social, and academic English
+- Adaptive difficulty that adjusts to the learner's current level
+- Weekly progress reports tracking vocabulary growth, grammar accuracy, and speaking time
+- Works in any modern browser (Chrome, Safari) on desktop and mobile
+
+## Who this is for
+
+- Non-native English speakers at beginner through advanced levels
+- Professionals preparing for English-language work environments
+- Students preparing for IELTS, TOEFL, or other spoken English assessments
+- Anyone who wants speaking practice without scheduling human tutoring sessions
+
+## Pricing
+
+- Free: 100 conversations per week, 2 practice scenarios, grammar feedback
+- Plus ($2/month): 1,000 conversations, 40+ scenarios, pronunciation feedback, weekly reports
+- Pro ($10/month): Unlimited conversations, full scenario library, advanced reports
+
+## Pages
+
+- Homepage: https://aurae.ai/
+- Features overview: https://aurae.ai/features
+- Blog: https://aurae.ai/blog
+- Use cases: https://aurae.ai/use-cases
+- Pricing: https://aurae.ai/#pricing
+- FAQ: https://aurae.ai/#faq
+
+## Feature detail pages
+
+- Emotional AI Voice Synthesis: https://aurae.ai/features/emotional-ai-voice-synthesis
+- Dynamic Voice AI Agent: https://aurae.ai/features/dynamic-voice-ai-agent
+- Multilingual Online Voice Over Tool: https://aurae.ai/features/multilingual-online-voice-over-tool
+- Low-Latency Conversational Voice API: https://aurae.ai/features/low-latency-conversational-voice-api
+
+## Blog articles
+
+- How to Make AI Voice Sound Less Robotic: https://aurae.ai/blog/how-to-make-ai-voice-sound-less-robotic
+- AI Voice Customer Service for E-Commerce: https://aurae.ai/blog/ai-voice-customer-service-for-ecommerce
+- AI Voice Acting for 3D Animation and Games: https://aurae.ai/blog/ai-voice-acting-for-3d-animation-and-games
+- Automated AI Voice for Tutorial Videos: https://aurae.ai/blog/automated-ai-voice-for-tutorial-videos
+
+## Contact
+
+Email: hello@aurae.ai

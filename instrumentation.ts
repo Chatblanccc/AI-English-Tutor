@@ -18,7 +18,9 @@ export async function register() {
   const proxyUrl =
     process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
 
-  if (proxyUrl && typeof globalThis.fetch !== 'undefined') {
+  const isNodeRuntime = process.env.NEXT_RUNTIME === 'nodejs' || typeof process.release?.name === 'string';
+
+  if (isNodeRuntime && proxyUrl && typeof globalThis.fetch !== 'undefined') {
     try {
       const { ProxyAgent, setGlobalDispatcher } = await import('undici');
       setGlobalDispatcher(new ProxyAgent(proxyUrl));

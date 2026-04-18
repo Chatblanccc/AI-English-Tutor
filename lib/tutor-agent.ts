@@ -2,9 +2,35 @@ import { ToolLoopAgent, tool, InferAgentUIMessage } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 
+let moonshotDirectDispatcher: unknown | null = null;
+
+async function getMoonshotDirectDispatcher(): Promise<unknown> {
+  if (moonshotDirectDispatcher) return moonshotDirectDispatcher;
+  const undici = await (0, eval)('import("undici")');
+  moonshotDirectDispatcher = new undici.Agent();
+  return moonshotDirectDispatcher;
+}
+
+const moonshotDirectFetch: typeof fetch = async (input, init) => {
+  const baseInit = init ?? {};
+  try {
+    const dispatcher = await getMoonshotDirectDispatcher();
+    return await fetch(
+      input,
+      {
+        ...baseInit,
+        dispatcher,
+      } as RequestInit & { dispatcher: unknown },
+    );
+  } catch {
+    return fetch(input, baseInit);
+  }
+};
+
 const kimi = createOpenAI({
   baseURL: 'https://api.moonshot.cn/v1',
   apiKey: process.env.KIMI_API_KEY ?? '',
+  fetch: moonshotDirectFetch,
 });
 
 // ── Tools ──────────────────────────────────────────────────────────────────────

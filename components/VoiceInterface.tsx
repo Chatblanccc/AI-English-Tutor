@@ -32,6 +32,63 @@ type ScenarioOption = {
   objective: string;
 };
 
+type TarotVisual = {
+  emoji: string;
+  caption: string;
+  omen: string;
+  art: string;
+};
+
+function getTarotVisualForScenario(scenario: ScenarioOption): TarotVisual {
+  const text = `${scenario.titleEn} ${scenario.objective}`.toLowerCase();
+  if (/(shop|grocery|market|buy|store|mall|price|payment)/.test(text)) {
+    return {
+      emoji: '🛒',
+      caption: 'The Merchant',
+      omen: 'Today you practice practical language: ask, compare, and confirm clearly.',
+      art: 'linear-gradient(145deg,#86efac 0%,#34d399 35%,#0f766e 100%)',
+    };
+  }
+  if (/(appoint|phone|call|schedule|doctor|clinic|booking|reserve)/.test(text)) {
+    return {
+      emoji: '📞',
+      caption: 'The Call',
+      omen: 'Short, clear sentences win. Ask for time, repeat details, and confirm politely.',
+      art: 'linear-gradient(145deg,#93c5fd 0%,#3b82f6 38%,#1e40af 100%)',
+    };
+  }
+  if (/(small talk|friend|social|party|intro|introduce|meeting people)/.test(text)) {
+    return {
+      emoji: '💬',
+      caption: 'The Spark',
+      omen: 'Keep the flow alive with follow-up questions and one personal detail.',
+      art: 'linear-gradient(145deg,#fda4af 0%,#f97316 40%,#9a3412 100%)',
+    };
+  }
+  if (/(travel|airport|hotel|check[- ]?in|taxi|tour|flight)/.test(text)) {
+    return {
+      emoji: '🧳',
+      caption: 'The Journey',
+      omen: 'Focus on requests, directions, and clear confirmations at each step.',
+      art: 'linear-gradient(145deg,#c4b5fd 0%,#8b5cf6 38%,#4c1d95 100%)',
+    };
+  }
+  if (/(job|interview|work|office|business|meeting|presentation)/.test(text)) {
+    return {
+      emoji: '💼',
+      caption: 'The Ladder',
+      omen: 'Speak with structure: state your point, add one reason, and close confidently.',
+      art: 'linear-gradient(145deg,#fcd34d 0%,#f59e0b 36%,#92400e 100%)',
+    };
+  }
+  return {
+    emoji: '🎭',
+    caption: 'The Scene',
+    omen: 'Use natural reactions first, then add one precise sentence to drive the role-play.',
+    art: 'linear-gradient(145deg,#f5d0fe 0%,#ec4899 36%,#7e22ce 100%)',
+  };
+}
+
 // ─── CSS ───────────────────────────────────────────────────────────────────────
 const STYLES = `
   @keyframes waveBar { from{transform:scaleY(0.3)} to{transform:scaleY(1)} }
@@ -62,6 +119,9 @@ const STYLES = `
   @keyframes sceneTrumpActiveGlowLight { 0%,100%{box-shadow:0 4px 28px rgba(204,26,26,.22),0 0 0 2px rgba(204,26,26,.30)} 50%{box-shadow:0 6px 40px rgba(204,26,26,.30),0 0 0 2px rgba(204,26,26,.40)} }
 
   @keyframes personaCardIn { from{opacity:0;transform:translateY(14px) scale(.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+  @keyframes tarotBackdropIn { from{opacity:0} to{opacity:1} }
+  @keyframes tarotCardIn { from{opacity:0;transform:translateY(24px) scale(.92)} to{opacity:1;transform:translateY(0) scale(1)} }
+  @keyframes tarotGlowPulse { 0%,100%{box-shadow:0 18px 50px rgba(0,0,0,.26),0 0 0 1px rgba(201,100,66,.22)} 50%{box-shadow:0 24px 66px rgba(0,0,0,.34),0 0 0 1px rgba(201,100,66,.42)} }
 
   .avatar-strip { transition: all .4s cubic-bezier(.4,0,.2,1); }
   @keyframes stripIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
@@ -962,6 +1022,9 @@ export const VoiceInterface = () => {
   }>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
   const [scenarioLaunchingId, setScenarioLaunchingId] = useState<string | null>(null);
+  const [tarotScenarioReveal, setTarotScenarioReveal] = useState<ScenarioOption | null>(null);
+  const [tarotFlipped, setTarotFlipped] = useState(false);
+  const tarotFlipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [assessmentScores, setAssessmentScores] = useState({
     fluency: 3,
     accuracy: 3,
@@ -1619,6 +1682,19 @@ export const VoiceInterface = () => {
     if (replayFallbackTimerRef.current) clearTimeout(replayFallbackTimerRef.current);
   }, []);
 
+  useEffect(() => () => {
+    if (tarotFlipTimerRef.current) clearTimeout(tarotFlipTimerRef.current);
+  }, []);
+
+  const closeTarotReveal = useCallback(() => {
+    if (tarotFlipTimerRef.current) {
+      clearTimeout(tarotFlipTimerRef.current);
+      tarotFlipTimerRef.current = null;
+    }
+    setTarotScenarioReveal(null);
+    setTarotFlipped(false);
+  }, []);
+
   useEffect(() => {
     if (!showPersonaSwitcher) return;
     const onPointerDown = (event: MouseEvent) => {
@@ -1785,12 +1861,20 @@ export const VoiceInterface = () => {
 
   const handleSwapScenario = useCallback(() => {
     if (isLoading || limitReached || scenarioLaunchingId) return;
-    if (!homeRecommendedScenarios.length) return;
-    const poolIds = homeRecommendedScenarios.map(s => s.scenarioId);
-    const currentIndex = activeHomeScenarioId ? poolIds.indexOf(activeHomeScenarioId) : -1;
-    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % poolIds.length : 0;
-    setSelectedScenarioId(poolIds[nextIndex]);
-  }, [activeHomeScenarioId, homeRecommendedScenarios, isLoading, limitReached, scenarioLaunchingId]);
+    if (!scenarios.length) return;
+    const fullPool = scenarios;
+    const candidatePool = activeHomeScenarioId && fullPool.length > 1
+      ? fullPool.filter((s) => s.scenarioId !== activeHomeScenarioId)
+      : fullPool;
+    if (!candidatePool.length) return;
+    const nextScenario = candidatePool[Math.floor(Math.random() * candidatePool.length)];
+    if (!nextScenario) return;
+    setSelectedScenarioId(nextScenario.scenarioId);
+    setTarotScenarioReveal(nextScenario);
+    setTarotFlipped(false);
+    if (tarotFlipTimerRef.current) clearTimeout(tarotFlipTimerRef.current);
+    tarotFlipTimerRef.current = setTimeout(() => setTarotFlipped(true), 180);
+  }, [activeHomeScenarioId, isLoading, limitReached, scenarioLaunchingId, scenarios]);
 
   const handleStartSelectedScenario = useCallback(() => {
     if (!activeHomeScenarioId) return;
@@ -1895,7 +1979,7 @@ export const VoiceInterface = () => {
 
     const focusItems = (todayPlan?.focusCorrections ?? []).slice(0, 3);
     const isStartDisabled = !activeHomeScenarioId || !!scenarioLaunchingId || isLoading || limitReached;
-    const isSwapDisabled = homeRecommendedScenarios.length === 0 || !!scenarioLaunchingId || isLoading || limitReached;
+    const isSwapDisabled = scenarios.length === 0 || !!scenarioLaunchingId || isLoading || limitReached || !!tarotScenarioReveal;
     const startLabel = scenarioLaunchingId === activeHomeScenarioId ? 'Launching...' : 'Start this scenario';
 
     const stepLabel = mobile ? 'text-[10px]' : 'text-[11px]';
@@ -1921,8 +2005,8 @@ export const VoiceInterface = () => {
     const reachedTopRank = !nextRank;
 
     return (
-      <section
-        className={`w-full rounded-2xl border text-left ${mobile ? 'p-3' : 'p-3.5'} ${stageMode && !mobile ? 'min-h-[clamp(300px,42vh,460px)]' : ''}`}
+        <section
+          className={`w-full rounded-2xl border text-left p-2.5 ${stageMode && !mobile ? 'min-h-[clamp(300px,42vh,460px)]' : ''}`}
         style={{
           background: theme.bgCard,
           borderColor: theme.bgCardBorder,
@@ -2113,39 +2197,6 @@ export const VoiceInterface = () => {
                 {missionRewardClaimed ? 'Status: mission completed' : `Streak x${effectiveStreakDays}`}
               </p>
             </div>
-            {homeRecommendedScenarios.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {homeRecommendedScenarios.slice(0, mobile ? 2 : 3).map((s) => {
-                  const isSelected = activeHomeScenarioId === s.scenarioId;
-                  return (
-                    <button
-                      key={s.scenarioId}
-                      onClick={() => {
-                        if (isSelected) {
-                          if (defaultHomeScenarioId) {
-                            setSelectedScenarioId(defaultHomeScenarioId);
-                          } else {
-                            setSelectedScenarioId(null);
-                          }
-                        } else {
-                          setSelectedScenarioId(s.scenarioId);
-                        }
-                      }}
-                      disabled={!!scenarioLaunchingId || isLoading || limitReached}
-                      className={`${bodySize} px-2 py-1 rounded-full border transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed`}
-                      style={{
-                        background: isSelected ? 'rgba(201,100,66,.12)' : theme.bgCard,
-                        borderColor: isSelected ? '#c96442' : theme.bgInputBorder,
-                        color: isSelected ? '#c96442' : theme.textMuted,
-                      }}
-                      title={`${s.titleEn} (${s.titleZh})`}
-                    >
-                      {s.titleEn}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
           </div>
         </div>
 
@@ -2211,6 +2262,124 @@ export const VoiceInterface = () => {
   return (
     <>
       <style>{STYLES}</style>
+
+      {tarotScenarioReveal && (() => {
+        const visual = getTarotVisualForScenario(tarotScenarioReveal);
+        return (
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            onClick={closeTarotReveal}
+            style={{
+              background: 'radial-gradient(circle at center, rgba(0,0,0,.24) 0%, rgba(0,0,0,.56) 68%, rgba(0,0,0,.68) 100%)',
+              backdropFilter: 'blur(2px)',
+              animation: 'tarotBackdropIn .22s ease-out both',
+              pointerEvents: 'auto',
+            }}
+            aria-modal="true"
+            role="dialog"
+          >
+            <div
+              className="w-full max-w-sm"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                perspective: 1200,
+                animation: 'tarotCardIn .28s cubic-bezier(.2,.8,.2,1) both',
+              }}
+            >
+              <div
+                className="relative rounded-3xl border overflow-hidden"
+                style={{
+                  minHeight: 460,
+                  transformStyle: 'preserve-3d',
+                  transition: 'transform .72s cubic-bezier(.2,.82,.2,1)',
+                  transform: tarotFlipped ? 'rotateY(0deg)' : 'rotateY(180deg)',
+                  borderColor: 'rgba(201,100,66,.35)',
+                  animation: 'tarotGlowPulse 2s ease-in-out infinite',
+                }}
+              >
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center px-8"
+                  style={{
+                    backfaceVisibility: 'hidden',
+                    WebkitBackfaceVisibility: 'hidden',
+                    transform: 'rotateY(180deg)',
+                    background: 'linear-gradient(165deg, rgba(40,30,26,.96) 0%, rgba(24,18,16,.98) 100%)',
+                    color: '#f6e7df',
+                  }}
+                >
+                  <div className="text-[11px] uppercase tracking-[0.3em] opacity-75">AURAE TAROT</div>
+                  <div
+                    className="mt-5 w-32 h-32 rounded-full flex items-center justify-center border"
+                    style={{ borderColor: 'rgba(201,100,66,.35)', background: 'rgba(201,100,66,.08)' }}
+                  >
+                    <span style={{ fontSize: 54 }}>🔮</span>
+                  </div>
+                  <p className="mt-8 text-sm text-center" style={{ color: 'rgba(246,231,223,.82)' }}>
+                    Rerolling your next speaking destiny...
+                  </p>
+                </div>
+
+                <div
+                  className="absolute inset-0 flex flex-col"
+                  style={{
+                    backfaceVisibility: 'hidden',
+                    WebkitBackfaceVisibility: 'hidden',
+                    transform: 'rotateY(0deg)',
+                    background: theme.bgCard,
+                    color: theme.textPrimary,
+                  }}
+                >
+                  <div className="h-48 p-4">
+                    <div
+                      className="w-full h-full rounded-2xl border flex flex-col items-center justify-center"
+                      style={{
+                        borderColor: 'rgba(255,255,255,.25)',
+                        background: visual.art,
+                        boxShadow: 'inset 0 1px 0 rgba(255,255,255,.25)',
+                      }}
+                    >
+                      <span style={{ fontSize: 58 }}>{visual.emoji}</span>
+                      <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em]" style={{ color: 'rgba(255,255,255,.92)' }}>
+                        {visual.caption}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="px-5 pb-5 pt-1">
+                    <p className="text-[10px] uppercase tracking-[0.2em] font-semibold" style={{ color: theme.accentPale }}>
+                      New Scenario Drawn
+                    </p>
+                    <h4 className="mt-1 text-lg font-semibold" style={{ color: theme.textPrimary }}>
+                      {tarotScenarioReveal.titleEn}
+                    </h4>
+                    <p className="text-xs mt-0.5" style={{ color: theme.textDimmer }}>
+                      {tarotScenarioReveal.titleZh}
+                    </p>
+                    <p className="text-sm mt-3 leading-relaxed" style={{ color: theme.textMuted }}>
+                      {tarotScenarioReveal.objective}
+                    </p>
+                    <p className="text-xs mt-3 leading-relaxed" style={{ color: theme.accentText }}>
+                      {visual.omen}
+                    </p>
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        onClick={closeTarotReveal}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer"
+                        style={{
+                          color: theme.textMuted,
+                          borderColor: theme.bgInputBorder,
+                          background: theme.bgInput,
+                        }}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Checkout success toast ─────────────────────────────────────────── */}
       {showCheckoutSuccess && (

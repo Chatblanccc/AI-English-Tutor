@@ -33,6 +33,34 @@ const PLUS_LIMIT = 1000;
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+let moonshotDirectDispatcher: unknown | null = null;
+
+async function getMoonshotDirectDispatcher(): Promise<unknown> {
+  if (moonshotDirectDispatcher) return moonshotDirectDispatcher;
+  // Load undici lazily to avoid webpack trying to bundle node:* scheme modules.
+  const undici = await (0, eval)('import("undici")');
+  moonshotDirectDispatcher = new undici.Agent();
+  return moonshotDirectDispatcher;
+}
+
+const moonshotDirectFetch: typeof fetch = async (input, init) => {
+  const baseInit = init ?? {};
+  try {
+    const dispatcher = await getMoonshotDirectDispatcher();
+    return await fetch(
+      input,
+      {
+        ...baseInit,
+        // Prefer direct socket for Moonshot to avoid proxy TLS handshake issues.
+        dispatcher,
+      } as RequestInit & { dispatcher: unknown },
+    );
+  } catch (e) {
+    console.warn('[chat] moonshot direct fetch failed, fallback to global fetch:', String(e));
+    // Fallback to global dispatcher (e.g. when outbound traffic must go through a proxy).
+    return fetch(input, baseInit);
+  }
+};
 
 type S = { user?: { id?: string } | null } | null;
 function newId() { return crypto.randomUUID(); }
@@ -116,6 +144,7 @@ export async function POST(req: NextRequest) {
 
   // ── Usage / rate-limit gate ───────────────────────────────────────────────
   let userPlan: 'free' | 'plus' | 'pro' = 'free';
+  let usageCheckAvailable = true;
   try {
     await ensureSchema();
     userPlan = await getUserPlan(userId);
@@ -144,11 +173,8 @@ export async function POST(req: NextRequest) {
     // pro: no limit
   } catch (e) {
     console.error('[chat] rate-limit check failed:', String(e));
-    // Fail closed: if we cannot verify plan/usage, do not allow unbounded provider usage.
-    return NextResponse.json(
-      { error: 'Service temporarily unavailable' },
-      { status: 503 },
-    );
+    // Degrade gracefully: allow chat to proceed even if usage infra is temporarily unavailable.
+    usageCheckAvailable = false;
   }
 
   const body = await req.json();
@@ -261,6 +287,7 @@ export async function POST(req: NextRequest) {
   const kimi = createOpenAI({
     baseURL: 'https://api.moonshot.cn/v1',
     apiKey: process.env.KIMI_API_KEY,
+    fetch: moonshotDirectFetch,
   });
 
   // Sanitize free-text fields before embedding in the system prompt to prevent
@@ -415,8 +442,10 @@ Current topic: ${topic}. Keep it relevant, opinionated, and natural.`;
     onFinish: async ({ text }) => {
       const finishedAt = Date.now();
       // Record one usage unit per completed round
-      try { await recordUsage(userId); } catch (e) {
-        console.error('[chat] recordUsage:', String(e));
+      if (usageCheckAvailable) {
+        try { await recordUsage(userId); } catch (e) {
+          console.error('[chat] recordUsage:', String(e));
+        }
       }
       try {
         await saveChatRoundProfile({

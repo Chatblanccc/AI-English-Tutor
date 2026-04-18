@@ -33,6 +33,12 @@ const securityHeaders: { key: string; value: string }[] = [
 ];
 
 const nextConfig: NextConfig = {
+  /**
+   * OneDrive/Desktop on Windows often returns EPERM on `rmdir` while Next cleans `.next`.
+   * Skipping the full clean reduces those failures; run `npx rimraf .next` (or delete the folder)
+   * when you need a pristine build.
+   */
+  cleanDistDir: false,
   reactCompiler: true,
   /** Browsers request /favicon.ico by default; point to our SVG so the tab icon is not missing or stale. */
   async redirects() {

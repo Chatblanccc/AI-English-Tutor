@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { featurePages } from "@/lib/seo-content";
+import { SITE_NAME, SITE_URL, DEFAULT_OG_IMAGE } from "@/lib/site";
 
 type FeaturePageProps = {
   params: Promise<{ slug: string }>;
@@ -31,6 +32,20 @@ export async function generateMetadata({
     alternates: {
       canonical: `/features/${feature.slug}`,
     },
+    openGraph: {
+      type: "website",
+      url: `${SITE_URL}/features/${feature.slug}`,
+      title: feature.title,
+      description: feature.description,
+      siteName: SITE_NAME,
+      images: [{ url: `${SITE_URL}${DEFAULT_OG_IMAGE}`, width: 1200, height: 630, alt: feature.title }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: feature.title,
+      description: feature.description,
+      images: [`${SITE_URL}${DEFAULT_OG_IMAGE}`],
+    },
   };
 }
 
@@ -42,8 +57,19 @@ export default async function FeatureDetailPage({ params }: FeaturePageProps) {
     notFound();
   }
 
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+      { "@type": "ListItem", position: 2, name: "Features", item: `${SITE_URL}/features` },
+      { "@type": "ListItem", position: 3, name: feature.shortTitle, item: `${SITE_URL}/features/${feature.slug}` },
+    ],
+  };
+
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-20">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       <nav className="mb-8 text-sm text-muted-foreground">
         <Link href="/features" className="hover:underline">
           Features
