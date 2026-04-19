@@ -1,0 +1,21 @@
+
+> english-tutor-assistant@0.1.0 start
+> next start
+
+▲ Next.js 16.2.3
+- Local:         http://localhost:3000
+- Network:       http://198.18.0.1:3000
+✓ Ready in 237ms
+[proxy] Global fetch proxy set → http://127.0.0.1:7897/
+[instrumentation] DB schema ready
+[schema] conversations table: NeonDbError: Error connecting to database: TypeError: fetch failed
+[schema] conversations table: NeonDbError: Error connecting to database: TypeError: fetch failed
+[GET /api/conversations] 106007887128 → 10 conversations
+[GET /api/conversations/[id]/messages] 14WvJ1oF → 4 msgs
+[tts] Fish Audio OK, content-type: audio/mpeg size: 134581
+[GET /api/conversations] 106007887128 → 10 conversations
+[GET /api/conversations/[id]/messages] 14WvJ1oF → 4 msgs
+[tts] Fish Audio OK, content-type: audio/mpeg size: 116609
+[GET /api/conversations] 106007887128 → 10 conversations
+[GET /api/conversations/[id]/messages] 14WvJ1oF → 4 msgs
+[tts] Fish Audio OK, content-type: audio/mpeg size: 134581
