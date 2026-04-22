@@ -423,7 +423,7 @@ function Navbar() {
                 <li key={item.key}>
                   <Link
                     href={item.href}
-                    className="px-3 py-2 text-sm font-medium text-foreground/90 font-body"
+                    className="px-3 py-2 text-sm font-medium text-white/90 transition-colors hover:text-white font-body"
                   >
                     {tx[item.key]}
                   </Link>
@@ -799,7 +799,7 @@ function HeroSection() {
             </span>
           </div>
 
-          <h1 className="mt-8 max-w-2xl text-6xl font-heading italic leading-[0.8] tracking-[-4px] text-foreground md:text-7xl lg:text-[5.5rem]">
+          <h1 className="mt-8 max-w-2xl text-6xl font-heading italic leading-[0.8] tracking-[-4px] text-white md:text-7xl lg:text-[5.5rem]">
             <BlurText text={heroCopy.heroTitle} delay={100} />
           </h1>
 
