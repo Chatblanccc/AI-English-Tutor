@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { useLanguageStore } from '@/store/useLanguageStore';
 import { t } from '@/lib/landing-i18n';
 import { AuraeLogoIcon } from '@/components/AuraeLogo';
@@ -10,6 +11,7 @@ type HeroSectionProps = {
 };
 
 export function HeroSection({ publicUsernames }: HeroSectionProps) {
+  const [videoReady, setVideoReady] = useState(false);
   const { lang } = useLanguageStore();
   const tx = t[lang].hero;
   const names = publicUsernames.length > 0
@@ -23,18 +25,32 @@ export function HeroSection({ publicUsernames }: HeroSectionProps) {
     <section data-lp-hero-section className="lp-hero-section relative">
       <div className="lp-hero-stage flex min-h-screen items-center overflow-hidden px-6 pb-20 pt-36">
         <div className="absolute inset-0 -z-30 bg-[#141413]" />
+        <div
+          className="absolute inset-0 h-full w-full transition-opacity duration-700"
+          style={{
+            zIndex: -25,
+            opacity: videoReady ? 0 : 1,
+            background:
+              'radial-gradient(circle at 18% 20%, rgba(201,100,66,0.20), transparent 30%), radial-gradient(circle at 82% 78%, rgba(126,184,201,0.12), transparent 34%), linear-gradient(135deg, #171418 0%, #0f0f12 52%, #1b1615 100%)',
+          }}
+          aria-hidden="true"
+        />
 
         <video
           autoPlay
           loop
           muted
           playsInline
-          preload="metadata"
-          poster="/og-default.svg"
-          className="lp-hero-video absolute inset-0 -z-20 h-full w-full object-cover"
+          preload="auto"
+          className="lp-hero-video absolute inset-0 -z-20 h-full w-full object-cover transition-opacity duration-700"
+          style={{ opacity: videoReady ? 1 : 0 }}
           src="/video.mp4"
           aria-hidden="true"
+          onLoadedData={() => {
+            setVideoReady(true);
+          }}
           onError={(e) => {
+            setVideoReady(false);
             (e.target as HTMLVideoElement).style.display = 'none';
           }}
         >
