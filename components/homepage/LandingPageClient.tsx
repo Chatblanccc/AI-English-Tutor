@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
@@ -310,6 +309,27 @@ function SectionVideoFrame({
   );
 }
 
+function FeatureAnimatedImage({
+  alt,
+  src,
+}: {
+  alt: string;
+  src: string;
+}) {
+  return (
+    <div className="relative aspect-[4/3] overflow-hidden rounded-[6px] bg-black">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        className="h-full w-full object-cover"
+      />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_42%),linear-gradient(180deg,transparent_55%,rgba(0,0,0,0.22))]" />
+    </div>
+  );
+}
+
 function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -602,13 +622,13 @@ function Navbar() {
       </div>
 
       {menuOpen && (
-        <div className="pointer-events-auto ml-auto mt-3 w-full max-w-xs rounded-2xl bg-black/80 p-4 backdrop-blur md:hidden">
+        <div className="pointer-events-auto mx-auto mt-3 w-full rounded-[8px] border border-white/15 bg-black/90 p-3 shadow-[0_20px_50px_rgba(0,0,0,0.45)] backdrop-blur-xl md:hidden">
           <div className="flex flex-col gap-2">
             {navItems.map((item) => (
               <Link
                 key={item.key}
                 href={item.href}
-                className="rounded-lg px-3 py-2 text-sm text-white/90 hover:bg-white/10"
+                className="rounded-[6px] px-3 py-2 text-sm text-white/90 hover:bg-white/10"
                 onClick={() => setMenuOpen(false)}
               >
                 {tx[item.key]}
@@ -620,7 +640,7 @@ function Navbar() {
             <button
               type="button"
               onClick={toggleLang}
-              className="mb-2 rounded-lg px-3 py-2 text-sm text-white/90 hover:bg-white/10"
+              className="mb-2 rounded-[6px] px-3 py-2 text-sm text-white/90 hover:bg-white/10"
             >
               {lang === "en" ? "切换到中文" : "Switch to English"}
             </button>
@@ -665,14 +685,14 @@ function Navbar() {
               <div className="flex flex-col gap-2">
                 <Link
                   href="/sign-in"
-                  className="rounded-lg px-3 py-2 text-sm text-white/90 hover:bg-white/10"
+                  className="rounded-[6px] px-3 py-2 text-sm text-white/90 hover:bg-white/10"
                   onClick={() => setMenuOpen(false)}
                 >
                   {tx.signIn}
                 </Link>
                 <Link
                   href="/sign-in?callbackUrl=%2Fchat"
-                  className="rounded-lg bg-white px-3 py-2 text-center text-sm font-medium text-black"
+                  className="rounded-[6px] bg-white px-3 py-2 text-center text-sm font-medium text-black"
                   onClick={() => setMenuOpen(false)}
                 >
                   {tx.startFree}
@@ -793,7 +813,7 @@ function HeroSection() {
   return (
     <section
       id="home"
-      className="relative isolate h-[1000px] overflow-visible px-6 md:px-8 lg:px-16"
+      className="relative isolate h-[930px] overflow-visible px-6 md:h-[1000px] md:px-8 lg:px-16"
     >
       <video
         ref={heroBlurVideoRef}
@@ -817,14 +837,14 @@ function HeroSection() {
         preload="auto"
         poster="/images/hero_bg.jpeg"
         aria-hidden="true"
-        className="absolute left-0 top-[20%] z-0 h-auto w-full object-contain opacity-90 [mask-image:linear-gradient(to_bottom,transparent_0%,black_16%,black_84%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,black_16%,black_84%,transparent_100%)]"
+        className="absolute left-0 top-[24%] z-0 h-auto w-full object-contain opacity-90 [mask-image:linear-gradient(to_bottom,transparent_0%,black_16%,black_84%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,black_16%,black_84%,transparent_100%)] md:top-[20%]"
       >
         <source src={heroVideoUrl} type="video/mp4" />
       </video>
       <div className="absolute inset-0 z-0 bg-black/5" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-0 h-[300px] bg-gradient-to-b from-transparent to-black" />
 
-      <div className="relative z-10 flex h-full flex-col items-center px-4 pt-[150px] text-center">
+      <div className="relative z-10 flex h-full flex-col items-center px-4 pt-[126px] text-center md:pt-[150px]">
         <div className="mx-auto flex max-w-4xl flex-col items-center">
           <div className="liquid-glass inline-flex items-center gap-3 rounded-full px-1 py-1 text-xs text-white">
             <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-black">
@@ -835,7 +855,14 @@ function HeroSection() {
             </span>
           </div>
 
-          <h1 className="mt-8 max-w-2xl text-6xl font-heading italic leading-[0.8] tracking-[-4px] text-white md:text-7xl lg:text-[5.5rem]">
+          <h1
+            className={cn(
+              "mt-7 max-w-[21rem] font-heading italic tracking-normal text-white md:mt-8 md:max-w-4xl md:text-7xl md:leading-[0.82] lg:text-[5.5rem]",
+              lang === "zh"
+                ? "text-[2.85rem] leading-[0.98] [overflow-wrap:anywhere]"
+                : "text-[3.25rem] leading-[0.86]",
+            )}
+          >
             <BlurText text={heroCopy.heroTitle} delay={100} />
           </h1>
 
@@ -843,7 +870,7 @@ function HeroSection() {
             initial={motionEnter.initial}
             animate={motionEnter.animate}
             transition={{ delay: 0.8, duration: 0.6, ease: "easeOut" }}
-            className="mt-6 max-w-xl text-sm font-body font-light leading-tight text-white md:text-base"
+            className="mt-5 max-w-[19rem] text-sm font-body font-light leading-snug text-white md:mt-6 md:max-w-xl md:text-base"
           >
             {heroCopy.heroBody}
           </motion.p>
@@ -852,7 +879,7 @@ function HeroSection() {
             initial={motionEnter.initial}
             animate={motionEnter.animate}
             transition={{ delay: 1.1, duration: 0.6, ease: "easeOut" }}
-            className="mt-8 flex flex-wrap items-center justify-center gap-4"
+            className="mt-7 flex flex-wrap items-center justify-center gap-4 md:mt-8"
           >
             <PrimaryGlassLink href={heroPrimaryCta.href}>
               {heroPrimaryCta.label}
@@ -1002,13 +1029,9 @@ function FeaturesChess() {
 
             <div className="w-full flex-1">
               <div className="liquid-glass overflow-hidden rounded-[8px] p-3">
-                <Image
-                  src="/images/feature-1.gif"
+                <FeatureAnimatedImage
+                  src="/images/feature-speaking-ai.png"
                   alt={copy.imageAlt1}
-                  width={1600}
-                  height={1200}
-                  className="h-full w-full rounded-[6px] object-cover"
-                  unoptimized
                 />
               </div>
             </div>
@@ -1037,13 +1060,9 @@ function FeaturesChess() {
 
             <div className="w-full flex-1">
               <div className="liquid-glass overflow-hidden rounded-[8px] p-3">
-                <Image
-                  src="/images/feature-2.gif"
+                <FeatureAnimatedImage
+                  src="/images/feature-words-progress.png"
                   alt={copy.imageAlt2}
-                  width={1600}
-                  height={1200}
-                  className="h-full w-full rounded-[6px] object-cover"
-                  unoptimized
                 />
               </div>
             </div>
@@ -1113,14 +1132,17 @@ function StatsSection() {
       desaturated
       minHeightClassName="py-28"
     >
-      <div className="liquid-glass rounded-md p-12 md:p-16">
-        <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-4">
+      <div className="liquid-glass rounded-[8px] p-4 md:rounded-md md:p-16">
+        <div className="grid grid-cols-2 gap-3 md:gap-10 lg:grid-cols-4">
           {stats.map((item) => (
-            <div key={item.label}>
-              <p className="text-4xl font-heading italic text-white md:text-5xl lg:text-6xl">
+            <div
+              key={item.label}
+              className="rounded-[6px] border border-white/10 bg-black/25 p-4 md:border-0 md:bg-transparent md:p-0"
+            >
+              <p className="text-3xl font-heading italic text-white md:text-5xl lg:text-6xl">
                 {item.value}
               </p>
-              <p className="mt-3 text-sm font-body font-light text-white/60">
+              <p className="mt-2 text-xs font-body font-light leading-snug text-white/60 md:mt-3 md:text-sm">
                 {item.label}
               </p>
             </div>

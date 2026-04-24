@@ -52,33 +52,15 @@ export function AuthEndpointSelfCheck({ basePath }: { basePath: string }) {
 
     const normalizedBasePath = basePath.startsWith('/') ? basePath : `/${basePath}`;
     const expectedEndpoint = `${normalizedBasePath}/session`;
-    const candidates = [expectedEndpoint, '/api/auth/session', '/auth/session']
-      .filter((value, index, arr) => arr.indexOf(value) === index);
 
     const run = async () => {
-      const results = await Promise.all(candidates.map(probeSessionEndpoint));
-      const expected = results.find(r => r.endpoint === expectedEndpoint);
-      const hasHealthyExpected = !!expected && expected.ok && expected.isJson;
-      if (hasHealthyExpected) return;
-
-      const healthyAlternative = results.find(
-        r => r.endpoint !== expectedEndpoint && r.ok && r.isJson,
-      );
-
-      if (healthyAlternative) {
-        console.error(
-          `[auth self-check] Session endpoint mismatch: SessionProvider basePath="${normalizedBasePath}" ` +
-          `is probing "${expectedEndpoint}" but "${healthyAlternative.endpoint}" is the healthy JSON endpoint. ` +
-          'Update SessionProvider basePath or your auth route path to keep them aligned.',
-          { results },
-        );
-        return;
-      }
+      const result = await probeSessionEndpoint(expectedEndpoint);
+      if (result.ok && result.isJson) return;
 
       console.error(
         '[auth self-check] No healthy Auth session endpoint detected. ' +
-        'Expected a JSON response from one of the session endpoints.',
-        { results },
+        `Expected a JSON response from "${expectedEndpoint}".`,
+        { result },
       );
     };
 
