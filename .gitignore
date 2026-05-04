@@ -29,6 +29,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -49,3 +50,11 @@ PROJECT_SUMMARY_LOCAL.md
 
 # Editor (optional local settings)
 .cursor/
+.claude/
+.kimi-k2.6/
+.kimi-k2.6-editor/
+
+# Local screenshots and generated deliverables
+kimi-k2.6-*.png
+kimi-k2.6-*.log
+docs/

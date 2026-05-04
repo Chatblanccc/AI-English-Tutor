@@ -27,6 +27,7 @@ import {
   extractMemoryCandidatesFromTurn,
   mergeMemoryCandidates,
 } from '@/lib/personalization/memory-curator-agent';
+import { sanitizeAssistantTextForModel } from '@/lib/tool-artifacts';
 
 const FREE_LIMIT = 100;
 const FREE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // rolling 7-day window
@@ -65,6 +66,30 @@ const moonshotDirectFetch: typeof fetch = async (input, init) => {
 
 type S = { user?: { id?: string } | null } | null;
 function newId() { return crypto.randomUUID(); }
+
+function sanitizeMessagesForModel(messages: UIMessage[]): UIMessage[] {
+  return messages.map((message) => {
+    if (message.role !== 'assistant') return message;
+
+    const parts: UIMessage['parts'] = [];
+    for (const part of message.parts) {
+      if (part.type !== 'text') {
+        parts.push(part);
+        continue;
+      }
+
+      const text = sanitizeAssistantTextForModel(part.text);
+      if (text) {
+        parts.push({ ...part, text });
+      }
+    }
+
+    return {
+      ...message,
+      parts: parts.length > 0 ? parts : [{ type: 'text', text: 'Alex shared a learning card.' }],
+    };
+  });
+}
 
 function getClientIp(req: NextRequest): string {
   const forwarded = req.headers.get('x-forwarded-for');
@@ -245,6 +270,7 @@ export async function POST(req: NextRequest) {
 
   const persona = VALID_PERSONAS.has(rawPersona ?? '') ? (rawPersona as 'alex' | 'trump') : 'alex';
   const messages = rawMessages as UIMessage[];
+  const messagesForModel = sanitizeMessagesForModel(messages);
 
   // ── Persist user message ──────────────────────────────────────────────────
   const safeTitle = typeof conversationTitle === 'string'
@@ -376,6 +402,7 @@ export async function POST(req: NextRequest) {
 
 ## Using your tools (silently — never announce you're calling them)
 Your tool calls happen silently in the background. Your TEXT reply must always be pure natural sentences — NEVER output JSON, curly braces {}, or structured data in your text.
+- If you ever feel tempted to write "functions.correctGrammar", "functions.issueChallenge", or any JSON-looking tool payload as text, stop and write a normal conversational sentence instead. The app renders tool results as cards.
 - Call correctGrammar when you spot a grammar mistake. Don't mention the correction in your text; just keep talking naturally.
 - Call explainVocabulary when you drop an interesting new word or phrase.
 - Call issueChallenge naturally every 3–5 exchanges when the moment feels right.
@@ -459,7 +486,7 @@ Current topic: ${topic}. Keep it relevant, opinionated, and natural.`;
   const result = streamText({
     model: kimi.chat('moonshot-v1-8k'),
     system: systemPrompt,
-    messages: await convertToModelMessages(messages, activeTools ? { tools: activeTools } : {}),
+    messages: await convertToModelMessages(messagesForModel, activeTools ? { tools: activeTools } : {}),
     ...(activeTools ? { tools: activeTools, stopWhen: stepCountIs(6) } : {}),
     onFinish: async ({ text }) => {
       const finishedAt = Date.now();

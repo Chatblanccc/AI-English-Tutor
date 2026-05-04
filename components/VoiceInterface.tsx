@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -22,6 +22,7 @@ import {
 
 import type { Conversation, MissionProgressInfo, Persona, RankProgress, UsageInfo } from '@/types';
 import { PAID_PLANS_LIVE } from '@/lib/product-flags';
+import { getInlineToolFallbackLine, stripToolCallArtifacts } from '@/lib/tool-artifacts';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, UIMessage, generateId } from 'ai';
 
@@ -43,7 +44,7 @@ function getTarotVisualForScenario(scenario: ScenarioOption): TarotVisual {
   const text = `${scenario.titleEn} ${scenario.objective}`.toLowerCase();
   if (/(shop|grocery|market|buy|store|mall|price|payment)/.test(text)) {
     return {
-      emoji: '馃洅',
+      emoji: '\u{1F6D2}',
       caption: 'The Merchant',
       omen: 'Today you practice practical language: ask, compare, and confirm clearly.',
       art: 'linear-gradient(145deg,#86efac 0%,#34d399 35%,#0f766e 100%)',
@@ -51,7 +52,7 @@ function getTarotVisualForScenario(scenario: ScenarioOption): TarotVisual {
   }
   if (/(appoint|phone|call|schedule|doctor|clinic|booking|reserve)/.test(text)) {
     return {
-      emoji: '馃摓',
+      emoji: '\u{1F4DE}',
       caption: 'The Call',
       omen: 'Short, clear sentences win. Ask for time, repeat details, and confirm politely.',
       art: 'linear-gradient(145deg,#93c5fd 0%,#3b82f6 38%,#1e40af 100%)',
@@ -59,7 +60,7 @@ function getTarotVisualForScenario(scenario: ScenarioOption): TarotVisual {
   }
   if (/(small talk|friend|social|party|intro|introduce|meeting people)/.test(text)) {
     return {
-      emoji: '馃挰',
+      emoji: '\u{1F4AC}',
       caption: 'The Spark',
       omen: 'Keep the flow alive with follow-up questions and one personal detail.',
       art: 'linear-gradient(145deg,#fda4af 0%,#f97316 40%,#9a3412 100%)',
@@ -67,7 +68,7 @@ function getTarotVisualForScenario(scenario: ScenarioOption): TarotVisual {
   }
   if (/(travel|airport|hotel|check[- ]?in|taxi|tour|flight)/.test(text)) {
     return {
-      emoji: '馃С',
+      emoji: '\u{1F9F3}',
       caption: 'The Journey',
       omen: 'Focus on requests, directions, and clear confirmations at each step.',
       art: 'linear-gradient(145deg,#c4b5fd 0%,#8b5cf6 38%,#4c1d95 100%)',
@@ -75,21 +76,21 @@ function getTarotVisualForScenario(scenario: ScenarioOption): TarotVisual {
   }
   if (/(job|interview|work|office|business|meeting|presentation)/.test(text)) {
     return {
-      emoji: '馃捈',
+      emoji: '\u{1F4BC}',
       caption: 'The Ladder',
       omen: 'Speak with structure: state your point, add one reason, and close confidently.',
       art: 'linear-gradient(145deg,#fcd34d 0%,#f59e0b 36%,#92400e 100%)',
     };
   }
   return {
-    emoji: '馃幁',
+    emoji: '\u{1F3AD}',
     caption: 'The Scene',
     omen: 'Use natural reactions first, then add one precise sentence to drive the role-play.',
     art: 'linear-gradient(145deg,#f5d0fe 0%,#ec4899 36%,#7e22ce 100%)',
   };
 }
 
-// 鈹€鈹€鈹€ CSS 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// CSS
 const STYLES = `
   @keyframes waveBar { from{transform:scaleY(0.3)} to{transform:scaleY(1)} }
   @keyframes pingRing { 0%{transform:translate(-50%,-50%) scale(1);opacity:.6} 100%{transform:translate(-50%,-50%) scale(1.6);opacity:0} }
@@ -129,7 +130,7 @@ const STYLES = `
   @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important}}
 `;
 
-// 鈹€鈹€鈹€ Helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// Helpers
 function formatRelativeDate(ts: number): string {
   const now = Date.now();
   const diff = now - ts;
@@ -164,12 +165,12 @@ function extractText(msg: UIMessage): string {
     }
     return cleanedText;
   }
-  return getToolFallbackLine(toolParts) || getInlineFallbackLine(parsed);
+  return getToolFallbackLine(toolParts) || getInlineToolFallbackLine(parsed);
 }
 
 const ENABLE_SEGMENTED_TTS = process.env.NEXT_PUBLIC_TTS_SEGMENTED !== '0';
-const SENTENCE_END_RE = /[.!?銆傦紒锛焅n]/;
-const TRAILING_QUOTE_RE = /^[\s"'鈥濃€?\]}]+/;
+const SENTENCE_END_RE = /[.!?\u3002\uff01\uff1f\n]/;
+const TRAILING_QUOTE_RE = /^[\s"'\u2019\u201d\]}]+/;
 const COMMON_ABBREVIATIONS = new Set([
   'mr.', 'mrs.', 'ms.', 'dr.', 'prof.', 'sr.', 'jr.', 'st.',
   'vs.', 'etc.', 'e.g.', 'i.e.', 'u.s.', 'u.k.', 'p.m.', 'a.m.',
@@ -232,109 +233,6 @@ function sliceSpeakableSegments(
   return { segments, rest };
 }
 
-function parseCorrectionPayload(text: string): { original?: string; corrected?: string; explanation?: string } | null {
-  const protocolMatch = text.match(/(?:functions\.)?correctGrammar:\d+\|(\{[\s\S]*?\})/im);
-  if (protocolMatch?.[1]) {
-    try {
-      const parsed = JSON.parse(protocolMatch[1]) as {
-        original?: string;
-        corrected?: string;
-        explanation?: string;
-      };
-      if (parsed.original || parsed.corrected || parsed.explanation) {
-        return parsed;
-      }
-    } catch {
-      // Fall through to non-JSON pattern parsing below.
-    }
-  }
-
-  const sourceMatch = text.match(/function\.correctGrammar\s*\(([\s\S]*?)\)\s*$/im)
-    ?? text.match(/correctGrammar\s*\(([\s\S]*?)\)\s*$/im);
-  if (!sourceMatch) return null;
-  const source = sourceMatch[1];
-
-  const readField = (keys: string[]): string | undefined => {
-    for (const key of keys) {
-      const quoted = new RegExp(`["']${key}["']\\s*:\\s*["']([\\s\\S]*?)["']`, 'i').exec(source);
-      if (quoted?.[1]) return quoted[1].trim();
-      const plain = new RegExp(`${key}\\s*[:锛歖\\s*["鈥溾€漖?([^\\n\\r,}]+)`, 'i').exec(source);
-      if (plain?.[1]) return plain[1].trim();
-    }
-    return undefined;
-  };
-
-  const parsed = {
-    original: readField(['original', '鍘熷彞']),
-    corrected: readField(['corrected', '淇', '绾犳']),
-    explanation: readField(['explanation', '瑙ｉ噴']),
-  };
-
-  if (!parsed.original && !parsed.corrected && !parsed.explanation) return null;
-  return parsed;
-}
-
-function parseChallengePayload(text: string): { type?: string; prompt?: string; hint?: string } | null {
-  const protocolMatch = text.match(/(?:functions\.)?issueChallenge:\d+\|(\{[\s\S]*?\})/im);
-  if (!protocolMatch?.[1]) return null;
-  try {
-    const parsed = JSON.parse(protocolMatch[1]) as { type?: string; prompt?: string; hint?: string };
-    if (parsed.type || parsed.prompt || parsed.hint) return parsed;
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function parseVocabularyPayload(text: string): { word?: string; partOfSpeech?: string } | null {
-  const protocolMatch = text.match(/(?:functions\.)?explainVocabulary:\d+\|(\{[\s\S]*?\})/im);
-  if (!protocolMatch?.[1]) return null;
-  try {
-    const parsed = JSON.parse(protocolMatch[1]) as { word?: string; partOfSpeech?: string };
-    if (parsed.word || parsed.partOfSpeech) return parsed;
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function stripToolCallArtifacts(text: string): {
-  cleanedText: string;
-  correction: { original: string; corrected: string; explanation: string } | null;
-  challenge: { type: string; prompt: string; hint?: string } | null;
-  vocabulary: { word: string; partOfSpeech?: string } | null;
-} {
-  const correction = parseCorrectionPayload(text);
-  const challenge = parseChallengePayload(text);
-  const vocabulary = parseVocabularyPayload(text);
-  const cleanedText = text
-    .replace(/(?:functions\.)?correctGrammar:\d+\|(\{[\s\S]*?\})/gim, '')
-    .replace(/(?:functions\.)?issueChallenge:\d+\|(\{[\s\S]*?\})/gim, '')
-    .replace(/(?:functions\.)?explainVocabulary:\d+\|(\{[\s\S]*?\})/gim, '')
-    .replace(/(?:functions\.)?[a-zA-Z_]\w*:\d+\|(\{[\s\S]*?\})/gim, '')
-    .replace(/functions?\.\w+\s*\([\s\S]*?\)\s*$/gim, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-
-  return {
-    cleanedText,
-    correction: correction ? {
-      original: correction.original ?? '',
-      corrected: correction.corrected ?? '',
-      explanation: correction.explanation ?? '',
-    } : null,
-    challenge: challenge ? {
-      type: challenge.type ?? 'fill-in-blank',
-      prompt: challenge.prompt ?? '',
-      hint: challenge.hint,
-    } : null,
-    vocabulary: vocabulary ? {
-      word: vocabulary.word ?? '',
-      partOfSpeech: vocabulary.partOfSpeech,
-    } : null,
-  };
-}
-
 type ToolPartLike = Extract<UIMessage['parts'][number], { type: `tool-${string}` }>;
 
 function getToolFallbackLine(toolParts: ToolPartLike[]): string {
@@ -362,17 +260,6 @@ function getToolFallbackLine(toolParts: ToolPartLike[]): string {
       if (word) return `Nice word to know: ${word}.`;
     }
   }
-  return '';
-}
-
-function getInlineFallbackLine(args: {
-  correction: { original: string; corrected: string; explanation: string } | null;
-  challenge: { type: string; prompt: string; hint?: string } | null;
-  vocabulary: { word: string; partOfSpeech?: string } | null;
-}): string {
-  if (args.challenge?.prompt) return `Quick challenge: ${args.challenge.prompt}`;
-  if (args.correction?.corrected) return `A more natural way to say it is: ${args.correction.corrected}`;
-  if (args.vocabulary?.word) return `Nice word to know: ${args.vocabulary.word}.`;
   return '';
 }
 
@@ -407,7 +294,7 @@ function toUIMessage(m: { id: string; role: string; content: string }): UIMessag
   };
 }
 
-// 鈹€鈹€鈹€ Tool Card Components 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// Tool card components
 
 const GrammarCard = ({
   original, corrected, explanation, mode,
@@ -422,7 +309,7 @@ const GrammarCard = ({
     </div>
     <div className="space-y-1">
       <p style={{ color: mode === 'dark' ? 'rgba(255,255,255,.4)' : 'rgba(0,0,0,.4)', textDecoration: 'line-through' }}>{original}</p>
-      <p style={{ color: mode === 'dark' ? '#bbf7d0' : '#166534', fontWeight: 500 }}>鈫?{corrected}</p>
+      <p style={{ color: mode === 'dark' ? '#bbf7d0' : '#166534', fontWeight: 500 }}>{'-> '}{corrected}</p>
       <p style={{ color: mode === 'dark' ? 'rgba(255,255,255,.5)' : 'rgba(0,0,0,.5)', fontStyle: 'italic' }}>{explanation}</p>
     </div>
   </div>
@@ -474,7 +361,7 @@ const ChallengeCard = ({
   );
 };
 
-// 鈹€鈹€鈹€ ChatBubble 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ChatBubble
 
 const ChatBubble = ({ message, onReplay, replaying, speakerName, speakerAccent }: {
   message: UIMessage;
@@ -512,14 +399,10 @@ const ChatBubble = ({ message, onReplay, replaying, speakerName, speakerAccent }
   const toolParts = message.parts.filter((p): p is ToolPartLike => p.type.startsWith('tool-'));
   const hasAnyCard = toolParts.length > 0 || !!inlineCorrection || !!inlineChallenge || !!inlineVocabulary;
   const visibleMainText = hasAnyCard && looksLikeThinkingProcess(mainText) ? '...' : mainText;
-  const fallbackLine = getToolFallbackLine(toolParts) || getInlineFallbackLine({
-    correction: inlineCorrection,
-    challenge: inlineChallenge,
-    vocabulary: inlineVocabulary,
-  });
-  const primaryText = visibleMainText || fallbackLine;
+  const primaryText = visibleMainText;
 
   const isStreaming = textParts.some(p => (p as { state?: string }).state === 'streaming');
+  const showMainBubble = u || !!primaryText || (isStreaming && !hasAnyCard);
 
   return (
     <div className={`flex flex-col gap-0.5 ${u ? 'items-end' : 'items-start'}`}
@@ -531,47 +414,48 @@ const ChatBubble = ({ message, onReplay, replaying, speakerName, speakerAccent }
       </span>
 
       <div className="group max-w-[78%]">
-        {/* Main text bubble */}
-        <div className="px-4 py-3 rounded-2xl text-sm leading-relaxed" style={{
-          background: u
-            ? (theme.mode === 'dark' ? `${speakerAccent ?? '#c96442'}1C` : `${speakerAccent ?? '#c96442'}1A`)
-            : (theme.mode === 'dark' ? 'rgba(255,255,255,.055)' : 'rgba(0,0,0,.04)'),
-          border: u
-            ? `1px solid ${speakerAccent ?? '#c96442'}38`
-            : `1px solid ${theme.mode === 'dark' ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)'}`,
-          backdropFilter: 'blur(10px)',
-        }}>
-          {primaryText ? (
-            <>
-              <p style={{ color: u ? (theme.bubbleUserText ?? theme.textSecondary) : theme.bubbleAIText, whiteSpace: 'pre-wrap' }}>
-                {primaryText}
-              </p>
-              {subText && (
-                <p className="mt-2 pt-2 text-xs leading-relaxed border-t"
-                  style={{
-                    color: u
-                      ? (theme.mode === 'dark' ? 'rgba(217,119,87,.45)' : 'rgba(184,87,58,.50)')
-                      : (theme.mode === 'dark' ? 'rgba(255,255,255,.28)' : 'rgba(28,16,6,.35)'),
-                    borderColor: u
-                      ? 'rgba(201,100,66,.16)'
-                      : (theme.mode === 'dark' ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)'),
-                    whiteSpace: 'pre-wrap',
-                  }}>
-                  {subText}
+        {showMainBubble && (
+          <div className="px-4 py-3 rounded-2xl text-sm leading-relaxed" style={{
+            background: u
+              ? (theme.mode === 'dark' ? `${speakerAccent ?? '#c96442'}1C` : `${speakerAccent ?? '#c96442'}1A`)
+              : (theme.mode === 'dark' ? 'rgba(255,255,255,.055)' : 'rgba(0,0,0,.04)'),
+            border: u
+              ? `1px solid ${speakerAccent ?? '#c96442'}38`
+              : `1px solid ${theme.mode === 'dark' ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)'}`,
+            backdropFilter: 'blur(10px)',
+          }}>
+            {primaryText ? (
+              <>
+                <p style={{ color: u ? (theme.bubbleUserText ?? theme.textSecondary) : theme.bubbleAIText, whiteSpace: 'pre-wrap' }}>
+                  {primaryText}
                 </p>
-              )}
-            </>
-          ) : isStreaming ? (
-            <div className="flex gap-1 items-center h-4">
-              {[0, 1, 2].map(i => (
-                <div key={i} className="w-1.5 h-1.5 rounded-full"
-                  style={{ background: 'rgba(201,100,66,.55)', animation: `waveBar .8s ease-in-out ${i * .2}s infinite alternate` }} />
-              ))}
-            </div>
-          ) : null}
-        </div>
+                {subText && (
+                  <p className="mt-2 pt-2 text-xs leading-relaxed border-t"
+                    style={{
+                      color: u
+                        ? (theme.mode === 'dark' ? 'rgba(217,119,87,.45)' : 'rgba(184,87,58,.50)')
+                        : (theme.mode === 'dark' ? 'rgba(255,255,255,.28)' : 'rgba(28,16,6,.35)'),
+                      borderColor: u
+                        ? 'rgba(201,100,66,.16)'
+                        : (theme.mode === 'dark' ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.07)'),
+                      whiteSpace: 'pre-wrap',
+                    }}>
+                    {subText}
+                  </p>
+                )}
+              </>
+            ) : isStreaming ? (
+              <div className="flex gap-1 items-center h-4">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="w-1.5 h-1.5 rounded-full"
+                    style={{ background: 'rgba(201,100,66,.55)', animation: `waveBar .8s ease-in-out ${i * .2}s infinite alternate` }} />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        )}
 
-        {/* Tool cards 鈥?rendered outside the bubble, below it */}
+        {/* Tool cards rendered outside the bubble, below it */}
         {!u && (toolParts.length > 0 || inlineCorrection || inlineChallenge || inlineVocabulary) && (
           <div className="mt-1 space-y-1">
             {inlineCorrection && (
@@ -657,7 +541,7 @@ const ChatBubble = ({ message, onReplay, replaying, speakerName, speakerAccent }
   );
 };
 
-// 鈹€鈹€鈹€ TextInputBar 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// TextInputBar
 const TextInputBar = ({ onSend, disabled }: { onSend: (text: string) => void; disabled: boolean }) => {
   const { theme } = useThemeStore();
   const [value, setValue] = useState('');
@@ -681,7 +565,7 @@ const TextInputBar = ({ onSend, disabled }: { onSend: (text: string) => void; di
   );
 };
 
-// 鈹€鈹€鈹€ ConversationList 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ConversationList
 const ConversationList = ({
   onClose,
   collapsed = false,
@@ -794,7 +678,7 @@ const ConversationList = ({
   );
 };
 
-// 鈹€鈹€鈹€ UserMenu 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// UserMenu
 const PLAN_BADGE: Record<string, { label: string; bg: string; text: string }> = {
   free:  { label: 'Free', bg: 'rgba(120,120,120,.15)', text: '#888' },
   plus:  { label: 'Plus', bg: 'rgba(201,100,66,.15)',  text: '#c96442' },
@@ -1040,7 +924,7 @@ const PERSONA_META: Record<Persona, {
   trump: { name: 'Donald', tagline: '45th President 路 Tremendous!', accent: '#CC1A1A', accentBg: 'rgba(204,26,26,.10)',   voiceId: 'trump' },
 };
 
-// 鈹€鈹€鈹€ PersonaCard 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// PersonaCard
 const PersonaCard = ({
   persona, selected, onSelect,
 }: { persona: Persona; selected: boolean; onSelect: () => void }) => {
@@ -1104,7 +988,7 @@ export const VoiceInterface = () => {
   const { data: session } = useSession();
   const userId = getUserId(session);
 
-  // Derive voice from persona 鈥?no separate voice state needed
+  // Derive voice from persona; no separate voice state needed.
   const activeVoiceId = PERSONA_META[selectedPersona].voiceId;
 
   const [inputLang, setInputLang] = useState<'en-US' | 'zh-CN'>('en-US');
@@ -1117,7 +1001,7 @@ export const VoiceInterface = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [brandIconHovered, setBrandIconHovered] = useState(false);
 
-  // 鈹€鈹€ Checkout success toast 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Checkout success toast
   const searchParams = useSearchParams();
   const [showCheckoutSuccess, setShowCheckoutSuccess] = useState(false);
   const [hasLoadedConversations, setHasLoadedConversations] = useState(false);
@@ -1157,7 +1041,7 @@ export const VoiceInterface = () => {
     }
   }, [searchParams]);
 
-  // 鈹€鈹€ Usage quota 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Usage quota
   const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [rankProgress, setRankProgress] = useState<RankProgress | null>(null);
   const [missionRuntimeProgress, setMissionRuntimeProgress] = useState<MissionProgressInfo | null>(null);
@@ -1165,7 +1049,7 @@ export const VoiceInterface = () => {
   const missionClaimInFlightRef = useRef(false);
   const missionClaimedDateRef = useRef<string | null>(null);
 
-  // 鈹€鈹€ API health status 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // API health status
   const [apiReady, setApiReady] = useState<boolean | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -1197,7 +1081,7 @@ export const VoiceInterface = () => {
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { selectedPersonaRef.current = selectedPersona; }, [selectedPersona]);
 
-  // 鈹€鈹€ useChat with AI SDK 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // useChat with AI SDK
   const transport = useMemo(() => new DefaultChatTransport({
     api: '/api/chat',
     body: () => ({
@@ -1266,7 +1150,7 @@ export const VoiceInterface = () => {
     }
   }, [activeVoiceId, enqueueSegment]);
 
-  // 鈹€鈹€ Fetch usage from /api/usage 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Fetch usage from /api/usage
   const fetchUsage = useCallback(async () => {
     try {
       const [usageRes, progressRes] = await Promise.all([
@@ -1330,13 +1214,13 @@ export const VoiceInterface = () => {
     fetchMissionProgress(currentConversationId);
   }, [currentConversationId, fetchMissionProgress, userId]);
 
-  // 鈹€鈹€ Persona availability (free users only get browser-TTS personas) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Persona availability (free users only get browser-TTS personas)
   const availablePersonas = useMemo<Persona[]>(
     () => (usage?.plan === 'free' ? ['alex'] : (Object.keys(PERSONA_META) as Persona[])),
     [usage],
   );
 
-  // 鈹€鈹€ Auto-scroll 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Auto-scroll
   const desktopMsgRef = useRef<HTMLDivElement>(null);
   const mobileMsgRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1344,7 +1228,7 @@ export const VoiceInterface = () => {
     if (mobileMsgRef.current) mobileMsgRef.current.scrollTop = mobileMsgRef.current.scrollHeight;
   }, [chatMessages]);
 
-  // 鈹€鈹€ Auto-speak (segmented streaming + fallback full-speak) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Auto-speak (segmented streaming + fallback full-speak)
   const prevStatus = useRef(status);
   useEffect(() => {
     const last = chatMessages[chatMessages.length - 1];
@@ -1445,7 +1329,7 @@ export const VoiceInterface = () => {
     prefetchReplayAudio,
   ]);
 
-  // 鈹€鈹€ Handle chatError 鈥?detect 429 limit_reached 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Handle chatError and detect 429 limit_reached responses.
   useEffect(() => {
     if (chatError) {
       const msg = chatError.message ?? '';
@@ -1456,17 +1340,17 @@ export const VoiceInterface = () => {
     }
   }, [chatError, fetchUsage]);
 
-  // 鈹€鈹€ Voice 鈫?send (handleSend defined after activeHomeScenario 鈥?see below) 鈹€
+  // Voice to send. handleSend is defined after activeHomeScenario below.
   const handleSendRef = useRef<(c: string) => void>(() => {});
 
-  // 鈹€鈹€ Speech error 鈫?show text input 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Speech error
   useEffect(() => {
     if (speechError === 'network' || speechError === 'not-allowed' || speechError === 'service-not-allowed') {
       setShowTextInput(true);
     }
   }, [speechError]);
 
-  // 鈹€鈹€ Load conversations on login 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Load conversations on login
   useEffect(() => {
     if (!userId) return;
     if (prevUserIdRef.current === userId) return;
@@ -1507,7 +1391,7 @@ export const VoiceInterface = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, fetchUsage]);
 
-  // 鈹€鈹€ Load assessment/scenarios/daily plan from real APIs 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Load assessment/scenarios/daily plan from real APIs
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
@@ -1563,7 +1447,7 @@ export const VoiceInterface = () => {
     return () => { cancelled = true; };
   }, [userId]);
 
-  // 鈹€鈹€ Show onboarding assessment for first-time users 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Show onboarding assessment for first-time users
   useEffect(() => {
     if (!userId || !hasLoadedConversations) return;
     if (!hasAssessment && conversations.length === 0) {
@@ -1612,7 +1496,7 @@ export const VoiceInterface = () => {
     }
   }, [assessmentScores]);
 
-  // 鈹€鈹€ Select a conversation 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Select a conversation
   const handleSelectConversation = useCallback(async (conv: Conversation) => {
     setCurrentConversationId(conv.id);
     currentConvIdRef.current = conv.id;
@@ -1635,7 +1519,7 @@ export const VoiceInterface = () => {
     } catch { setMessages([]); }
   }, [availablePersonas, selectedPersona, setCurrentConversationId, setMessages, setPersona]);
 
-  // 鈹€鈹€ New chat 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // New chat
   const handleNewChat = useCallback(() => {
     setCurrentConversationId(null);
     currentConvIdRef.current = null;
@@ -1651,7 +1535,7 @@ export const VoiceInterface = () => {
     replayStartedRef.current = false;
   }, [resetSegmentedTtsState, setCurrentConversationId, setMessages, stop]);
 
-  // 鈹€鈹€ Clear / delete current conversation 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Clear / delete current conversation
   const handleClear = useCallback(async () => {
     const convId = currentConvIdRef.current;
     setMessages([]);
@@ -1753,7 +1637,7 @@ export const VoiceInterface = () => {
     handleSendRef.current('Let us have a free English chat. Please choose a topic naturally and keep giving short feedback.');
   }, [isLoading, limitReached, scenarioLaunchingId, unlock, updateSettings]);
 
-  // 鈹€鈹€ Persona switch 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Persona switch
   const handlePersonaSwitch = useCallback((p: Persona) => {
     if (p === selectedPersona) { setShowPersonaSwitcher(false); return; }
     setPersona(p);
@@ -1820,7 +1704,7 @@ export const VoiceInterface = () => {
     return () => document.removeEventListener('mousedown', onPointerDown);
   }, [showPersonaSwitcher]);
 
-  // 鈹€鈹€ Status derived values 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Status derived values
   const isActive = isListening || isSpeaking || isLoading;
   const API_GREEN = '#22c55e';
   const idleLabel = apiReady === true ? 'Ready' : 'False';
@@ -1835,7 +1719,7 @@ export const VoiceInterface = () => {
   const idleColor = apiReady === true ? API_GREEN : theme.textMuted;
   const statusColor = isListening ? personaAccent : isSpeaking ? personaAccent : isLoading ? '#94a3b8' : idleColor;
 
-  // 鈹€鈹€ Speech error banner 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Speech error
   const speechErrorBanner = speechError === 'network' ? (
     <div className="flex flex-col gap-1.5 px-4 py-3 rounded-xl text-xs border text-center mx-4 mb-2"
       style={{ background: 'rgba(201,100,66,.06)', borderColor: 'rgba(201,100,66,.20)', color: 'rgba(217,119,87,.9)' }}>
@@ -1849,7 +1733,7 @@ export const VoiceInterface = () => {
     </div>
   ) : null;
 
-  // 鈹€鈹€ Usage pill & limit banner 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Usage pill & limit banner
   const usagePill = usage && usage.window !== 'unlimited' ? (() => {
     const remaining = Math.max(0, usage.limit - usage.used);
     const isLow = remaining <= Math.ceil(usage.limit * 0.2);
@@ -2032,7 +1916,7 @@ export const VoiceInterface = () => {
               You&apos;ve used all {usage.limit} free rounds this week.
               {resetLabel ? ` Resets${resetLabel}.` : ''}{' '}
               <Link href="/#pricing" style={{ color: '#d97757', textDecoration: 'underline' }}>Pricing</Link>
-              {' '}鈥?paid upgrades are temporarily unavailable.
+              {' '} - paid upgrades are temporarily unavailable.
             </p>
           </>
         )}
@@ -2040,7 +1924,7 @@ export const VoiceInterface = () => {
     );
   })() : null;
 
-  // 鈹€鈹€ Controls strip 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Controls strip
   const Controls = () => {
     const pa = PERSONA_META[selectedPersona].accent;
       const paRgb = selectedPersona === 'trump' ? '204,26,26' : '201,100,66';
@@ -2049,7 +1933,7 @@ export const VoiceInterface = () => {
       <button onClick={() => setInputLang(l => l === 'en-US' ? 'zh-CN' : 'en-US')}
         className="px-3 py-1.5 rounded-xl text-[11px] font-semibold border transition-all cursor-pointer"
         style={{ borderColor: `rgba(${paRgb},.2)`, background: `rgba(${paRgb},.06)`, color: theme.accentPale }}>
-        {inputLang === 'en-US' ? 'EN' : '涓枃'}
+        {inputLang === 'en-US' ? 'EN' : '\u4e2d\u6587'}
       </button>
 
       <button
@@ -2082,7 +1966,7 @@ export const VoiceInterface = () => {
     );
   };
 
-  // 鈹€鈹€ Filtered messages for display 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+  // Filtered messages for display
   const displayMessages = chatMessages.filter(m => m.role === 'user' || m.role === 'assistant');
 
   useEffect(() => {
@@ -2379,9 +2263,9 @@ export const VoiceInterface = () => {
     );
   };
 
-  // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+
   //  RENDER
-  // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+
   return (
     <>
       <style>{STYLES}</style>
@@ -2435,7 +2319,7 @@ export const VoiceInterface = () => {
                     className="mt-5 w-32 h-32 rounded-full flex items-center justify-center border"
                     style={{ borderColor: 'rgba(201,100,66,.35)', background: 'rgba(201,100,66,.08)' }}
                   >
-                    <span style={{ fontSize: 54 }}>馃敭</span>
+                    <span style={{ fontSize: 54 }}>{'\u{1F52D}'}</span>
                   </div>
                   <p className="mt-8 text-sm text-center" style={{ color: 'rgba(246,231,223,.82)' }}>
                     Rerolling your next speaking destiny...
@@ -2504,7 +2388,7 @@ export const VoiceInterface = () => {
         );
       })()}
 
-      {/* 鈹€鈹€ Checkout success toast 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */}
+      {/* Checkout success toast */}
       {showCheckoutSuccess && (
         <div
           className="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl text-sm font-medium"
@@ -2672,10 +2556,10 @@ export const VoiceInterface = () => {
         </div>
       )}
 
-      {/* 鈺愨晲鈺?DESKTOP 鈮?lg 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺?*/}
+      {/* Desktop layout */}
       <div className="hidden lg:flex h-[100dvh] w-full overflow-hidden" style={{ background: theme.bgMain }}>
 
-        {/* 鈹€鈹€ Conversation sidebar 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */}
+        {/* Conversation sidebar */}
         <aside
           className="flex flex-col h-full border-r flex-shrink-0 overflow-hidden"
           style={{
@@ -2752,7 +2636,7 @@ export const VoiceInterface = () => {
           </div>
         </aside>
 
-        {/* 鈹€鈹€ Main chat area 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ */}
+        {/* Main chat area */}
         <main className="relative flex-1 flex flex-col overflow-hidden" style={{ background: theme.bgMain }}>
 
           {displayMessages.length === 0 ? (
@@ -2975,8 +2859,8 @@ export const VoiceInterface = () => {
                   <RotateCcw size={11} /> Clear chat
                 </button>
                 <span className="text-[10px]" style={{ color: theme.textDimmer }}>
-                  {inputLang === 'zh-CN' ? '涓枃杈撳叆 路 鑻辨枃鍥炲' : 'EN input 路 EN reply'}
-                  {selectedPersona === 'trump' && ' 路 馃嚭馃嚫 Trump voice'}
+                  {inputLang === 'zh-CN' ? '\u4e2d\u6587\u8f93\u5165 / \u82f1\u6587\u56de\u590d' : 'EN input / EN reply'}
+                  {selectedPersona === 'trump' && ' / \u{1F1FA}\u{1F1F8} Trump voice'}
                 </span>
                 {usagePill}
               </div>
@@ -2985,7 +2869,7 @@ export const VoiceInterface = () => {
         </main>
       </div>
 
-      {/* 鈺愨晲鈺?MOBILE < lg 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 */}
+      {/* Mobile layout */}
       <div className="flex lg:hidden flex-col h-[100dvh] w-full overflow-hidden select-none"
         style={{ background: theme.bgMain }}>
 
@@ -3172,7 +3056,7 @@ export const VoiceInterface = () => {
           </div>
           <div className="flex items-center justify-center gap-3 mt-3">
             <p className="text-center text-[10px] tracking-wide" style={{ color: theme.textDimmer }}>
-              {inputLang === 'zh-CN' ? '涓枃杈撳叆 路 鑻辨枃鍥炲' : 'EN input 路 EN reply'}
+              {inputLang === 'zh-CN' ? '\u4e2d\u6587\u8f93\u5165 / \u82f1\u6587\u56de\u590d' : 'EN input / EN reply'}
             </p>
             {usagePill}
           </div>
@@ -3218,7 +3102,7 @@ export const VoiceInterface = () => {
   );
 };
 
-// 鈹€鈹€鈹€ WaveformBars (defined after VoiceInterface to avoid hoisting issues) 鈹€鈹€鈹€鈹€鈹€鈹€
+// WaveformBars (defined after VoiceInterface to avoid hoisting issues)
 const WaveformBars = ({ active, color }: { active: boolean; color: string }) => {
   const heights = [38, 62, 82, 52, 72, 88, 48, 68, 58, 78, 44, 65];
   return (

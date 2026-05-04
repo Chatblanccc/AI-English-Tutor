@@ -53,9 +53,9 @@
 |------|------|
 | `README.md` | 面向人类用户的快速开始指南、功能介绍、项目结构简图 |
 | `AGENTS.md` | 面向 AI 编码助手的规则（提示 Next.js 版本存在 Breaking Changes） |
-| `CLAUDE.md` | 简单指向 `AGENTS.md` |
-| `Gemini.md` | 项目规范文档：技术栈、开发原则、目录约定、特殊指令 |
-| `DESIGN.md` | 完整设计系统文档（参考 Claude/Anthropic 风格）：配色、字体、按钮、卡片、间距、响应式 |
+| `KIMI_K2_6_AGENTS.md` | 简单指向 `AGENTS.md` |
+| `KIMI_K2_6_PROJECT_RULES.md` | 项目规范文档：技术栈、开发原则、目录约定、特殊指令 |
+| `DESIGN.md` | 完整设计系统文档（参考 kimi k2.6 风格）：配色、字体、按钮、卡片、间距、响应式 |
 | `PROJECT_SUMMARY_LOCAL.md` | **本地备忘（不提交 Git）**，记录会话级改动、付费开关状态、恢复检查清单 |
 | `PROJECT_STRUCTURE.md` | **本文件**，项目结构全景说明 |
 
@@ -65,7 +65,7 @@
 |-----------|------|
 | `.next/` | Next.js 构建缓存与输出（已 .gitignore） |
 | `.vercel/` | Vercel 部署配置（已 .gitignore） |
-| `.cursor/` | Cursor IDE 设置 |
+| `.kimi-k2.6-editor/` | kimi k2.6 编辑器设置 |
 
 ---
 

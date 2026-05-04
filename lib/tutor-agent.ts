@@ -115,6 +115,7 @@ export const tutorAgent = new ToolLoopAgent({
 - Use correctGrammar silently when you spot a mistake — don't announce it, just let the correction card appear.
 - Use explainVocabulary when you drop an interesting word or phrase that might be new to them.
 - Use issueChallenge naturally every 3–5 exchanges when the moment feels right.
+- Never write functions.correctGrammar, functions.issueChallenge, raw JSON, or tool payload text to the user. Tool results are rendered as cards by the app.
 - After a challenge response: if correct, react naturally; if off, casually model the right way.`,
   tools: {
     explainVocabulary,

@@ -1,17 +1,17 @@
-# Design System Inspired by Claude (Anthropic)
+# Design System Inspired by kimi k2.6
 
 ## 1. Visual Theme & Atmosphere
 
-Claude's interface is a literary salon reimagined as a product page — warm, unhurried, and quietly intellectual. The entire experience is built on a parchment-toned canvas (`#f5f4ed`) that deliberately evokes the feeling of high-quality paper rather than a digital surface. Where most AI product pages lean into cold, futuristic aesthetics, Claude's design radiates human warmth, as if the AI itself has good taste in interior design.
+The kimi k2.6 interface is a literary salon reimagined as a product page — warm, unhurried, and quietly intellectual. The entire experience is built on a parchment-toned canvas (`#f5f4ed`) that deliberately evokes the feeling of high-quality paper rather than a digital surface. Where most AI product pages lean into cold, futuristic aesthetics, the kimi k2.6 design radiates human warmth, as if the AI itself has good taste in interior design.
 
-The signature move is the custom Anthropic Serif typeface — a medium-weight serif with generous proportions that gives every headline the gravitas of a book title. Combined with organic, hand-drawn-feeling illustrations in terracotta (`#c96442`), black, and muted green, the visual language says "thoughtful companion" rather than "powerful tool." The serif headlines breathe at tight-but-comfortable line-heights (1.10–1.30), creating a cadence that feels more like reading an essay than scanning a product page.
+The signature move is the custom Kimi Serif typeface — a medium-weight serif with generous proportions that gives every headline the gravitas of a book title. Combined with organic, hand-drawn-feeling illustrations in terracotta (`#c96442`), black, and muted green, the visual language says "thoughtful companion" rather than "powerful tool." The serif headlines breathe at tight-but-comfortable line-heights (1.10–1.30), creating a cadence that feels more like reading an essay than scanning a product page.
 
-What makes Claude's design truly distinctive is its warm neutral palette. Every gray has a yellow-brown undertone (`#5e5d59`, `#87867f`, `#4d4c48`) — there are no cool blue-grays anywhere. Borders are cream-tinted (`#f0eee6`, `#e8e6dc`), shadows use warm transparent blacks, and even the darkest surfaces (`#141413`, `#30302e`) carry a barely perceptible olive warmth. This chromatic consistency creates a space that feels lived-in and trustworthy.
+What makes the kimi k2.6 design truly distinctive is its warm neutral palette. Every gray has a yellow-brown undertone (`#5e5d59`, `#87867f`, `#4d4c48`) — there are no cool blue-grays anywhere. Borders are cream-tinted (`#f0eee6`, `#e8e6dc`), shadows use warm transparent blacks, and even the darkest surfaces (`#141413`, `#30302e`) carry a barely perceptible olive warmth. This chromatic consistency creates a space that feels lived-in and trustworthy.
 
 **Key Characteristics:**
 
 - Warm parchment canvas (`#f5f4ed`) evoking premium paper, not screens
-- Custom Anthropic type family: Serif for headlines, Sans for UI, Mono for code
+- Custom Kimi type family: Serif for headlines, Sans for UI, Mono for code
 - Terracotta brand accent (`#c96442`) — warm, earthy, deliberately un-tech
 - Exclusively warm-toned neutrals — every gray has a yellow-brown undertone
 - Organic, editorial illustrations replacing typical tech iconography
@@ -22,7 +22,7 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 
 ### Primary
 
-- **Anthropic Near Black** (`#141413`): The primary text color and dark-theme surface — not pure black but a warm, almost olive-tinted dark that's gentler on the eyes. The warmest "black" in any major tech brand.
+- **Kimi Near Black** (`#141413`): The primary text color and dark-theme surface — not pure black but a warm, almost olive-tinted dark that's gentler on the eyes. The warmest "black" in any major tech brand.
 - **Terracotta Brand** (`#c96442`): The core brand color — a burnt orange-brown used for primary CTA buttons, brand moments, and the signature accent. Deliberately earthy and un-tech.
 - **Coral Accent** (`#d97757`): A lighter, warmer variant of the brand color used for text accents, links on dark surfaces, and secondary emphasis.
 
@@ -59,15 +59,15 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 
 ### Gradient System
 
-- Claude's design is **gradient-free** in the traditional sense. Depth and visual richness come from the interplay of warm surface tones, organic illustrations, and light/dark section alternation. The warm palette itself creates a "gradient" effect as the eye moves through cream → sand → stone → charcoal → black sections.
+- the kimi k2.6 design is **gradient-free** in the traditional sense. Depth and visual richness come from the interplay of warm surface tones, organic illustrations, and light/dark section alternation. The warm palette itself creates a "gradient" effect as the eye moves through cream → sand → stone → charcoal → black sections.
 
 ## 3. Typography Rules
 
 ### Font Family
 
-- **Headline**: `Anthropic Serif`, with fallback: `Georgia`
-- **Body / UI**: `Anthropic Sans`, with fallback: `Arial`
-- **Code**: `Anthropic Mono`, with fallback: `Arial`
+- **Headline**: `Kimi Serif`, with fallback: `Georgia`
+- **Body / UI**: `Kimi Sans`, with fallback: `Arial`
+- **Code**: `Kimi Mono`, with fallback: `Arial`
 
 *Note: These are custom typefaces. For external implementations, Georgia serves as the serif substitute and system-ui/Inter as the sans substitute.*
 
@@ -76,28 +76,28 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 
 | Role              | Font            | Size                | Weight  | Line Height    | Letter Spacing | Notes                                |
 | ----------------- | --------------- | ------------------- | ------- | -------------- | -------------- | ------------------------------------ |
-| Display / Hero    | Anthropic Serif | 64px (4rem)         | 500     | 1.10 (tight)   | normal         | Maximum impact, book-title presence  |
-| Section Heading   | Anthropic Serif | 52px (3.25rem)      | 500     | 1.20 (tight)   | normal         | Feature section anchors              |
-| Sub-heading Large | Anthropic Serif | 36–36.8px (~2.3rem) | 500     | 1.30           | normal         | Secondary section markers            |
-| Sub-heading       | Anthropic Serif | 32px (2rem)         | 500     | 1.10 (tight)   | normal         | Card titles, feature names           |
-| Sub-heading Small | Anthropic Serif | 25–25.6px (~1.6rem) | 500     | 1.20           | normal         | Smaller section titles               |
-| Feature Title     | Anthropic Serif | 20.8px (1.3rem)     | 500     | 1.20           | normal         | Small feature headings               |
-| Body Serif        | Anthropic Serif | 17px (1.06rem)      | 400     | 1.60 (relaxed) | normal         | Serif body text (editorial passages) |
-| Body Large        | Anthropic Sans  | 20px (1.25rem)      | 400     | 1.60 (relaxed) | normal         | Intro paragraphs                     |
-| Body / Nav        | Anthropic Sans  | 17px (1.06rem)      | 400–500 | 1.00–1.60      | normal         | Navigation links, UI text            |
-| Body Standard     | Anthropic Sans  | 16px (1rem)         | 400–500 | 1.25–1.60      | normal         | Standard body, button text           |
-| Body Small        | Anthropic Sans  | 15px (0.94rem)      | 400–500 | 1.00–1.60      | normal         | Compact body text                    |
-| Caption           | Anthropic Sans  | 14px (0.88rem)      | 400     | 1.43           | normal         | Metadata, descriptions               |
-| Label             | Anthropic Sans  | 12px (0.75rem)      | 400–500 | 1.25–1.60      | 0.12px         | Badges, small labels                 |
-| Overline          | Anthropic Sans  | 10px (0.63rem)      | 400     | 1.60           | 0.5px          | Uppercase overline labels            |
-| Micro             | Anthropic Sans  | 9.6px (0.6rem)      | 400     | 1.60           | 0.096px        | Smallest text                        |
-| Code              | Anthropic Mono  | 15px (0.94rem)      | 400     | 1.60           | -0.32px        | Inline code, terminal                |
+| Display / Hero    | Kimi Serif | 64px (4rem)         | 500     | 1.10 (tight)   | normal         | Maximum impact, book-title presence  |
+| Section Heading   | Kimi Serif | 52px (3.25rem)      | 500     | 1.20 (tight)   | normal         | Feature section anchors              |
+| Sub-heading Large | Kimi Serif | 36–36.8px (~2.3rem) | 500     | 1.30           | normal         | Secondary section markers            |
+| Sub-heading       | Kimi Serif | 32px (2rem)         | 500     | 1.10 (tight)   | normal         | Card titles, feature names           |
+| Sub-heading Small | Kimi Serif | 25–25.6px (~1.6rem) | 500     | 1.20           | normal         | Smaller section titles               |
+| Feature Title     | Kimi Serif | 20.8px (1.3rem)     | 500     | 1.20           | normal         | Small feature headings               |
+| Body Serif        | Kimi Serif | 17px (1.06rem)      | 400     | 1.60 (relaxed) | normal         | Serif body text (editorial passages) |
+| Body Large        | Kimi Sans  | 20px (1.25rem)      | 400     | 1.60 (relaxed) | normal         | Intro paragraphs                     |
+| Body / Nav        | Kimi Sans  | 17px (1.06rem)      | 400–500 | 1.00–1.60      | normal         | Navigation links, UI text            |
+| Body Standard     | Kimi Sans  | 16px (1rem)         | 400–500 | 1.25–1.60      | normal         | Standard body, button text           |
+| Body Small        | Kimi Sans  | 15px (0.94rem)      | 400–500 | 1.00–1.60      | normal         | Compact body text                    |
+| Caption           | Kimi Sans  | 14px (0.88rem)      | 400     | 1.43           | normal         | Metadata, descriptions               |
+| Label             | Kimi Sans  | 12px (0.75rem)      | 400–500 | 1.25–1.60      | 0.12px         | Badges, small labels                 |
+| Overline          | Kimi Sans  | 10px (0.63rem)      | 400     | 1.60           | 0.5px          | Uppercase overline labels            |
+| Micro             | Kimi Sans  | 9.6px (0.6rem)      | 400     | 1.60           | 0.096px        | Smallest text                        |
+| Code              | Kimi Mono  | 15px (0.94rem)      | 400     | 1.60           | -0.32px        | Inline code, terminal                |
 
 
 ### Principles
 
-- **Serif for authority, sans for utility**: Anthropic Serif carries all headline content with medium weight (500), giving every heading the gravitas of a published title. Anthropic Sans handles all functional UI text — buttons, labels, navigation — with quiet efficiency.
-- **Single weight for serifs**: All Anthropic Serif headings use weight 500 — no bold, no light. This creates a consistent "voice" across all headline sizes, as if the same author wrote every heading.
+- **Serif for authority, sans for utility**: Kimi Serif carries all headline content with medium weight (500), giving every heading the gravitas of a published title. Kimi Sans handles all functional UI text — buttons, labels, navigation — with quiet efficiency.
+- **Single weight for serifs**: All Kimi Serif headings use weight 500 — no bold, no light. This creates a consistent "voice" across all headline sizes, as if the same author wrote every heading.
 - **Relaxed body line-height**: Most body text uses 1.60 line-height — significantly more generous than typical tech sites (1.4–1.5). This creates a reading experience closer to a book than a dashboard.
 - **Tight-but-not-compressed headings**: Line-heights of 1.10–1.30 for headings are tight but never claustrophobic. The serif letterforms need breathing room that sans-serif fonts don't.
 - **Micro letter-spacing on labels**: Small sans text (12px and below) uses deliberate letter-spacing (0.12px–0.5px) to maintain readability at tiny sizes.
@@ -118,7 +118,7 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 **White Surface**
 
 - Background: Pure White (`#ffffff`)
-- Text: Anthropic Near Black (`#141413`)
+- Text: Kimi Near Black (`#141413`)
 - Padding: 8px 16px 8px 12px
 - Radius: generously rounded (12px)
 - Hover: shifts to secondary background color
@@ -143,7 +143,7 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 
 **Dark Primary**
 
-- Background: Anthropic Near Black (`#141413`)
+- Background: Kimi Near Black (`#141413`)
 - Text: Warm Silver (`#b0aea5`)
 - Padding: 9.6px 16.8px
 - Radius: generously rounded (12px)
@@ -161,7 +161,7 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 
 ### Inputs & Forms
 
-- Text: Anthropic Near Black (`#141413`)
+- Text: Kimi Near Black (`#141413`)
 - Padding: 1.6px 12px (very compact vertical)
 - Border: standard warm borders
 - Focus: ring with Focus Blue (`#3898ec`) border-color — the only cool color moment
@@ -170,7 +170,7 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 ### Navigation
 
 - Sticky top nav with warm background
-- Logo: Claude wordmark in Anthropic Near Black
+- Logo: kimi k2.6 wordmark in Kimi Near Black
 - Links: mix of Near Black (`#141413`), Olive Gray (`#5e5d59`), and Dark Warm (`#3d3d3a`)
 - Nav border: `1px solid #30302e` (dark) or `1px solid #f0eee6` (light)
 - CTA: Terracotta Brand button or White Surface button
@@ -178,7 +178,7 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 
 ### Image Treatment
 
-- Product screenshots showing the Claude chat interface
+- Product screenshots showing the kimi k2.6 chat interface
 - Generous border-radius on media (16–32px)
 - Embedded video players with rounded corners
 - Dark UI screenshots provide contrast against warm light canvas
@@ -250,7 +250,7 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 | Inset (Level 4)     | `inset 0px 0px 0px 1px` at 15% opacity                    | Active/pressed button states                |
 
 
-**Shadow Philosophy**: Claude communicates depth through **warm-toned ring shadows** rather than traditional drop shadows. The signature `0px 0px 0px 1px` pattern creates a border-like halo that's softer than an actual border — it's a shadow pretending to be a border, or a border that's technically a shadow. When drop shadows do appear, they're extremely soft (0.05 opacity, 24px blur) — barely visible lifts that suggest floating rather than casting.
+**Shadow Philosophy**: kimi k2.6 communicates depth through **warm-toned ring shadows** rather than traditional drop shadows. The signature `0px 0px 0px 1px` pattern creates a border-like halo that's softer than an actual border — it's a shadow pretending to be a border, or a border that's technically a shadow. When drop shadows do appear, they're extremely soft (0.05 opacity, 24px blur) — barely visible lifts that suggest floating rather than casting.
 
 ### Decorative Depth
 
@@ -261,8 +261,8 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 
 ### Do
 
-- Use Parchment (`#f5f4ed`) as the primary light background — the warm cream tone IS the Claude personality
-- Use Anthropic Serif at weight 500 for all headlines — the single-weight consistency is intentional
+- Use Parchment (`#f5f4ed`) as the primary light background — the warm cream tone IS the kimi k2.6 personality
+- Use Kimi Serif at weight 500 for all headlines — the single-weight consistency is intentional
 - Use Terracotta Brand (`#c96442`) only for primary CTAs and the highest-signal brand moments
 - Keep all neutrals warm-toned — every gray should have a yellow-brown undertone
 - Use ring shadows (`0px 0px 0px 1px`) for interactive element states instead of drop shadows
@@ -274,14 +274,14 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 ### Don't
 
 - Don't use cool blue-grays anywhere — the palette is exclusively warm-toned
-- Don't use bold (700+) weight on Anthropic Serif — weight 500 is the ceiling for serifs
+- Don't use bold (700+) weight on Kimi Serif — weight 500 is the ceiling for serifs
 - Don't introduce saturated colors beyond Terracotta — the palette is deliberately muted
 - Don't use sharp corners (< 6px radius) on buttons or cards — softness is core to the identity
 - Don't apply heavy drop shadows — depth comes from ring shadows and background color shifts
 - Don't use pure white (`#ffffff`) as a page background — Parchment (`#f5f4ed`) or Ivory (`#faf9f5`) are always warmer
-- Don't use geometric/tech-style illustrations — Claude's illustrations are organic and hand-drawn-feeling
+- Don't use geometric/tech-style illustrations — kimi k2.6 illustrations are organic and hand-drawn-feeling
 - Don't reduce body line-height below 1.40 — the generous spacing supports the editorial personality
-- Don't use monospace fonts for non-code content — Anthropic Mono is strictly for code
+- Don't use monospace fonts for non-code content — Kimi Mono is strictly for code
 - Don't mix in sans-serif for headlines — the serif/sans split is the typographic identity
 
 ## 8. Responsive Behavior
@@ -328,7 +328,7 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 - Brand CTA: "Terracotta Brand (#c96442)"
 - Page Background: "Parchment (#f5f4ed)"
 - Card Surface: "Ivory (#faf9f5)"
-- Primary Text: "Anthropic Near Black (#141413)"
+- Primary Text: "Kimi Near Black (#141413)"
 - Secondary Text: "Olive Gray (#5e5d59)"
 - Tertiary Text: "Stone Gray (#87867f)"
 - Borders (light): "Border Cream (#f0eee6)"
@@ -336,18 +336,18 @@ What makes Claude's design truly distinctive is its warm neutral palette. Every 
 
 ### Example Component Prompts
 
-- "Create a hero section on Parchment (#f5f4ed) with a headline at 64px Anthropic Serif weight 500, line-height 1.10. Use Anthropic Near Black (#141413) text. Add a subtitle in Olive Gray (#5e5d59) at 20px Anthropic Sans with 1.60 line-height. Place a Terracotta Brand (#c96442) CTA button with Ivory text, 12px radius."
-- "Design a feature card on Ivory (#faf9f5) with a 1px solid Border Cream (#f0eee6) border and comfortably rounded corners (8px). Title in Anthropic Serif at 25px weight 500, description in Olive Gray (#5e5d59) at 16px Anthropic Sans. Add a whisper shadow (rgba(0,0,0,0.05) 0px 4px 24px)."
-- "Build a dark section on Anthropic Near Black (#141413) with Ivory (#faf9f5) headline text in Anthropic Serif at 52px weight 500. Use Warm Silver (#b0aea5) for body text. Borders in Dark Surface (#30302e)."
+- "Create a hero section on Parchment (#f5f4ed) with a headline at 64px Kimi Serif weight 500, line-height 1.10. Use Kimi Near Black (#141413) text. Add a subtitle in Olive Gray (#5e5d59) at 20px Kimi Sans with 1.60 line-height. Place a Terracotta Brand (#c96442) CTA button with Ivory text, 12px radius."
+- "Design a feature card on Ivory (#faf9f5) with a 1px solid Border Cream (#f0eee6) border and comfortably rounded corners (8px). Title in Kimi Serif at 25px weight 500, description in Olive Gray (#5e5d59) at 16px Kimi Sans. Add a whisper shadow (rgba(0,0,0,0.05) 0px 4px 24px)."
+- "Build a dark section on Kimi Near Black (#141413) with Ivory (#faf9f5) headline text in Kimi Serif at 52px weight 500. Use Warm Silver (#b0aea5) for body text. Borders in Dark Surface (#30302e)."
 - "Create a button in Warm Sand (#e8e6dc) with Charcoal Warm (#4d4c48) text, 8px radius, and a ring shadow (0px 0px 0px 1px #d1cfc5). Padding: 0px 12px 0px 8px."
-- "Design a model comparison grid with three cards on Ivory surfaces. Each card gets a Border Warm (#e8e6dc) top border, model name in Anthropic Serif at 25px, and description in Olive Gray at 15px Anthropic Sans."
+- "Design a model comparison grid with three cards on Ivory surfaces. Each card gets a Border Warm (#e8e6dc) top border, model name in Kimi Serif at 25px, and description in Olive Gray at 15px Kimi Sans."
 
 ### Iteration Guide
 
 1. Focus on ONE component at a time
 2. Reference specific color names — "use Olive Gray (#5e5d59)" not "make it gray"
 3. Always specify warm-toned variants — no cool grays
-4. Describe serif vs sans usage explicitly — "Anthropic Serif for the heading, Anthropic Sans for the label"
+4. Describe serif vs sans usage explicitly — "Kimi Serif for the heading, Kimi Sans for the label"
 5. For shadows, use "ring shadow (0px 0px 0px 1px)" or "whisper shadow" — never generic "drop shadow"
 6. Specify the warm background — "on Parchment (#f5f4ed)" or "on Near Black (#141413)"
 7. Keep illustrations organic and conceptual — describe "hand-drawn-feeling" style

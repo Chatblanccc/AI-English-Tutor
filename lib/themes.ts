@@ -1,4 +1,4 @@
-// ─── Design tokens aligned with DESIGN.md (Claude / Anthropic parchment palette) ───
+// ─── Design tokens aligned with DESIGN.md (kimi k2.6 / Kimi parchment palette) ───
 export type ThemeMode = 'dark' | 'light';
 
 export interface Theme {
@@ -108,7 +108,7 @@ export const lightTheme: Theme = {
   bgFooterBorder:   'rgba(232,230,220,.85)', // Border Warm
   bgStatusPill:     'rgba(250,249,245,.92)',
   // Text — Near Black / Olive Gray / Stone Gray
-  textPrimary:   '#141413',                // Anthropic Near Black
+  textPrimary:   '#141413',                // Kimi Near Black
   textSecondary: '#5e5d59',                // Olive Gray
   textMuted:     '#87867f',                // Stone Gray
   textDim:       'rgba(135,134,127,.65)',
